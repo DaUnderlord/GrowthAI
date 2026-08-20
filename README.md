@@ -1,0 +1,58 @@
+# GrowthOS AI
+
+AI-powered growth marketing platform (Vite + React + Express + Supabase + Gemini).
+
+## Local development
+
+```bash
+cp .env.example .env
+# Fill in Supabase + Gemini keys
+npm install
+npm run dev
+```
+
+Open http://localhost:3000
+
+## Deploy to Vercel (via GitHub)
+
+1. Push this repo to GitHub (already configured for `DaUnderlord/GrowthAI`).
+2. In [Vercel](https://vercel.com/new), import the GitHub repository.
+3. Vercel reads `vercel.json` automatically:
+   - **Build command:** `npm run build`
+   - **Output directory:** `dist`
+   - **API routes:** `/api/*` and `/auth/*` → Express serverless function
+4. Add environment variables in **Project → Settings → Environment Variables**:
+
+| Variable | When | Required |
+|----------|------|----------|
+| `VITE_SUPABASE_URL` | Build | Yes |
+| `VITE_SUPABASE_ANON_KEY` | Build | Yes |
+| `GEMINI_API_KEY` | Runtime | Yes (AI features) |
+| `SUPABASE_URL` | Runtime | Yes (WhatsApp/server) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Runtime | Yes (WhatsApp/server) |
+| `APP_URL` | Runtime | Optional (auto from Vercel URL) |
+| `GEMINI_MODEL` | Runtime | Optional (`gemini-2.5-flash`) |
+| `META_*`, `WHATSAPP_*` | Runtime | Optional (WhatsApp module) |
+
+5. In **Supabase Dashboard → Authentication → URL Configuration**, add your Vercel deployment URL(s) to **Site URL** and **Redirect URLs**.
+6. For WhatsApp webhooks, set Meta callback URL to `https://YOUR_DOMAIN/api/meta/webhook`.
+
+### Notes
+
+- AI routes use up to 60s serverless timeout (Pro plan recommended for long Gemini calls).
+- Static SPA is served from `dist/`; client routes fall back to `index.html`.
+- Health check: `GET /api/health`
+
+## Supabase migrations
+
+Apply SQL files in `supabase/migrations/` via Supabase SQL Editor or CLI before using WhatsApp CRM features.
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Local dev (Vite + Express) |
+| `npm run build` | Production frontend build (Vercel) |
+| `npm run build:all` | Frontend + bundled Node server (self-hosted) |
+| `npm run start` | Run bundled server locally (`NODE_ENV=production`) |
+| `npm run lint` | TypeScript check |
