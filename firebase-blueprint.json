@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles",
+      "description": "User profile information and privileges",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "avatar": { "type": "string" },
+        "phone": { "type": "string" },
+        "companyName": { "type": "string" },
+        "department": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "clients": {
+      "title": "Client Profiles",
+      "description": "Agency client profiles and settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "industry": { "type": "string" },
+        "industryLabel": { "type": "string" },
+        "logo": { "type": "string" },
+        "website": { "type": "string" },
+        "tier": { "type": "string" },
+        "monthlyBudget": { "type": "number" },
+        "primaryGoal": { "type": "string" },
+        "growthScore": { "type": "number" }
+      },
+      "required": ["name", "industry"]
+    },
+    "invoices": {
+      "title": "Invoices",
+      "description": "Client invoice and billing records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "date": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["invoiceNumber", "clientId", "amount", "status"]
+    },
+    "campaigns": {
+      "title": "Marketing Campaigns",
+      "description": "Social media and ad campaigns",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "title": { "type": "string" },
+        "platform": { "type": "string" },
+        "status": { "type": "string" },
+        "budget": { "type": "number" },
+        "spent": { "type": "number" }
+      },
+      "required": ["clientId", "title", "platform", "status"]
+    }
+  }
+}

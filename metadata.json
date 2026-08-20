@@ -1,0 +1,6 @@
+{
+  "name": "GrowthOS AI",
+  "description": "Autonomous AI Growth Operating System for Digital Marketing Agencies managing multi-channel clients",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

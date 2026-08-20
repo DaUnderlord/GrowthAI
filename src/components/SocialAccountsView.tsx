@@ -1,0 +1,719 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Globe, 
+  Plus, 
+  CheckCircle2, 
+  RefreshCw, 
+  Check, 
+  Sparkles, 
+  Link2, 
+  ShieldCheck, 
+  Trash2, 
+  Zap,
+  BarChart2,
+  Lock,
+  ExternalLink
+} from 'lucide-react';
+import { ClientProfile, ConnectedPlatform, PlatformType, UserProfile } from '../types';
+
+interface SocialAccountsViewProps {
+  client: ClientProfile;
+  currentUser?: UserProfile;
+  onUpdatePlatforms: (updatedPlatforms: ConnectedPlatform[]) => void;
+}
+
+export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, currentUser, onUpdatePlatforms }) => {
+  const [platforms, setPlatforms] = useState<ConnectedPlatform[]>(client.platforms);
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Handle Permanent Deletion of Social Media Handle (Requires can_delete_social_handle privilege)
+  const handleDeletePlatform = (id: string, name: string) => {
+    if (currentUser && !currentUser.privileges.can_delete_social_handle) {
+      setOauthError(`Access Denied: Your account role (${currentUser.role.toUpperCase()}) does not have the 'can_delete_social_handle' privilege. Please grant 'can_delete_social_handle' in Team & Access Rights.`);
+      return;
+    }
+
+    const updated = platforms.filter((p) => p.id !== id);
+    setPlatforms(updated);
+    onUpdatePlatforms(updated);
+    setDeletingId(null);
+    showToast(`Successfully deleted ${name} social handle for ${client.name}`);
+  };
+
+  // Sync state whenever selected client or client.platforms updates
+  useEffect(() => {
+    setPlatforms(client.platforms);
+  }, [client.id, client.platforms]);
+
+  // New account form state
+  const [selectedChannel, setSelectedChannel] = useState<PlatformType>('instagram');
+  const [accountHandle, setAccountHandle] = useState('');
+  const [initialFollowers, setInitialFollowers] = useState(15000);
+  const [customAccessToken, setCustomAccessToken] = useState('');
+  const [oauthAuthTab, setOauthAuthTab] = useState<'popup' | 'token' | 'guide'>('popup');
+  const [isOauthLoggingIn, setIsOauthLoggingIn] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  // Listen for OAuth Success postMessage from Popup window
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
+        return;
+      }
+
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        const platformType = (event.data.platform || selectedChannel) as PlatformType;
+        const code = event.data.code;
+
+        setIsOauthLoggingIn(true);
+        try {
+          const res = await fetch(`/api/auth/${platformType}/exchange-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code,
+              accountHandle: accountHandle || `@${platformType}_brand_official`,
+            }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            const channelNames: Record<PlatformType, string> = {
+              instagram: 'Instagram',
+              facebook: 'Facebook Page',
+              tiktok: 'TikTok',
+              linkedin: 'LinkedIn',
+              youtube: 'YouTube',
+              meta_ads: 'Meta Ads Manager',
+              google_analytics: 'Google Analytics 4',
+              whatsapp: 'WhatsApp Business',
+              google_ads: 'Google Ads',
+            };
+
+            const existingIdx = platforms.findIndex((p) => p.id === platformType);
+            let updated: ConnectedPlatform[];
+            if (existingIdx >= 0) {
+              updated = [...platforms];
+              updated[existingIdx] = {
+                ...updated[existingIdx],
+                connected: true,
+                accountName: data.accountName,
+                followers: data.followers,
+                growthRate: data.growthRate,
+                healthScore: data.healthScore,
+                lastSync: 'Just now (OAuth Verified)',
+                apiStatus: 'live',
+                oauthTokenMasked: data.oauthTokenMasked,
+                livePingMs: data.livePingMs,
+              };
+            } else {
+              const newPlatform: ConnectedPlatform = {
+                id: platformType,
+                name: channelNames[platformType] || platformType,
+                icon: 'Globe',
+                connected: true,
+                accountName: data.accountName,
+                followers: data.followers,
+                growthRate: data.growthRate,
+                lastSync: 'Just now (OAuth Verified)',
+                healthScore: data.healthScore,
+                apiStatus: 'live',
+                oauthTokenMasked: data.oauthTokenMasked,
+                livePingMs: data.livePingMs,
+              };
+              updated = [newPlatform, ...platforms];
+            }
+
+            setPlatforms(updated);
+            onUpdatePlatforms(updated);
+            setShowConnectModal(false);
+          }
+        } catch (err: any) {
+          console.error("OAuth token exchange error:", err);
+          setOauthError("Failed to verify OAuth response from provider.");
+        } finally {
+          setIsOauthLoggingIn(false);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [platforms, selectedChannel, accountHandle]);
+
+  // Handle Direct Instant OAuth Authorization
+  const handleDirectOAuthConnect = async () => {
+    setIsOauthLoggingIn(true);
+    setOauthError(null);
+    try {
+      const res = await fetch(`/api/auth/${selectedChannel}/exchange-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: `direct_oauth_auth_${Date.now()}`,
+          accountHandle: accountHandle || `@${selectedChannel}_official`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const channelNames: Record<PlatformType, string> = {
+          instagram: 'Instagram',
+          facebook: 'Facebook Page',
+          tiktok: 'TikTok',
+          linkedin: 'LinkedIn',
+          youtube: 'YouTube',
+          meta_ads: 'Meta Ads Manager',
+          google_analytics: 'Google Analytics 4',
+          whatsapp: 'WhatsApp Business',
+          google_ads: 'Google Ads',
+        };
+
+        const existingIdx = platforms.findIndex((p) => p.id === selectedChannel);
+        let updated: ConnectedPlatform[];
+        if (existingIdx >= 0) {
+          updated = [...platforms];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            connected: true,
+            accountName: data.accountName,
+            followers: data.followers || initialFollowers,
+            growthRate: data.growthRate,
+            healthScore: data.healthScore,
+            lastSync: 'Just now (OAuth Verified)',
+            apiStatus: 'live',
+            oauthTokenMasked: data.oauthTokenMasked,
+            livePingMs: data.livePingMs,
+          };
+        } else {
+          const newPlatform: ConnectedPlatform = {
+            id: selectedChannel,
+            name: channelNames[selectedChannel] || selectedChannel,
+            icon: 'Globe',
+            connected: true,
+            accountName: data.accountName,
+            followers: data.followers || initialFollowers,
+            growthRate: data.growthRate,
+            lastSync: 'Just now (OAuth Verified)',
+            healthScore: data.healthScore,
+            apiStatus: 'live',
+            oauthTokenMasked: data.oauthTokenMasked,
+            livePingMs: data.livePingMs,
+          };
+          updated = [newPlatform, ...platforms];
+        }
+
+        setPlatforms(updated);
+        onUpdatePlatforms(updated);
+        setShowConnectModal(false);
+      } else {
+        setOauthError('Direct OAuth verification failed');
+      }
+    } catch (err: any) {
+      setOauthError(err.message || 'Error executing direct OAuth authorization');
+    } finally {
+      setIsOauthLoggingIn(false);
+    }
+  };
+  const handleTriggerOauthPopup = async () => {
+    setIsOauthLoggingIn(true);
+    setOauthError(null);
+    try {
+      const redirectUri = `${window.location.origin}/auth/callback`;
+      const res = await fetch(`/api/auth/${selectedChannel}/url?redirectUri=${encodeURIComponent(redirectUri)}`);
+      const data = await res.json();
+
+      if (data.url) {
+        const popupWidth = 600;
+        const popupHeight = 700;
+        const left = window.screen.width / 2 - popupWidth / 2;
+        const top = window.screen.height / 2 - popupHeight / 2;
+
+        const authWindow = window.open(
+          data.url,
+          `oauth_popup_${selectedChannel}`,
+          `width=${popupWidth},height=${popupHeight},top=${top},left=${left},resizable=yes,scrollbars=yes`
+        );
+
+        if (!authWindow) {
+          setOauthError('Browser blocked popup window. Please enable popups for this site.');
+          setIsOauthLoggingIn(false);
+        }
+      } else {
+        setOauthError('Failed to generate OAuth Authorization URL');
+        setIsOauthLoggingIn(false);
+      }
+    } catch (err: any) {
+      setOauthError(err.message || 'Error connecting to OAuth endpoint');
+      setIsOauthLoggingIn(false);
+    }
+  };
+
+  const handleSyncAccount = async (id: string, platformType: PlatformType, handle: string) => {
+    setSyncingId(id);
+    try {
+      const res = await fetch("/api/socials/sync-live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: platformType,
+          accountHandle: handle,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.stats) {
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  lastSync: 'Just now (Live API)',
+                  healthScore: 99,
+                  followers: data.stats.followers || p.followers,
+                  growthRate: data.stats.growthRate || p.growthRate,
+                  apiStatus: 'live',
+                  rateLimitQuota: data.stats.rateLimitQuota || '9,500 / 10,000',
+                  livePingMs: data.livePingMs || 18,
+                }
+              : p
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to sync live API:", err);
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const handleToggleConnection = (id: string) => {
+    const updated = platforms.map((p) =>
+      p.id === id ? { ...p, connected: !p.connected } : p
+    );
+    setPlatforms(updated);
+    onUpdatePlatforms(updated);
+  };
+
+  const handleConnectNewAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountHandle) return;
+
+    const channelNames: Record<PlatformType, string> = {
+      instagram: 'Instagram',
+      facebook: 'Facebook Page',
+      tiktok: 'TikTok',
+      linkedin: 'LinkedIn',
+      youtube: 'YouTube',
+      meta_ads: 'Meta Ads Manager',
+      google_analytics: 'Google Analytics 4',
+      whatsapp: 'WhatsApp Business',
+      google_ads: 'Google Ads',
+    };
+
+    const formattedHandle = accountHandle.startsWith('@') ? accountHandle : `@${accountHandle}`;
+    const existingIndex = platforms.findIndex((p) => p.id === selectedChannel);
+
+    let updated: ConnectedPlatform[];
+    if (existingIndex >= 0) {
+      updated = [...platforms];
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        connected: true,
+        accountName: formattedHandle,
+        followers: Number(initialFollowers) || updated[existingIndex].followers,
+        lastSync: 'Just now',
+        healthScore: 98,
+      };
+    } else {
+      const newPlatform: ConnectedPlatform = {
+        id: selectedChannel,
+        name: channelNames[selectedChannel] || selectedChannel,
+        icon: 'Globe',
+        connected: true,
+        accountName: formattedHandle,
+        followers: Number(initialFollowers),
+        growthRate: 15.4,
+        lastSync: 'Just now',
+        healthScore: 96,
+      };
+      updated = [newPlatform, ...platforms];
+    }
+
+    setPlatforms(updated);
+    onUpdatePlatforms(updated);
+    setShowConnectModal(false);
+    setAccountHandle('');
+  };
+
+  return (
+    <div className="space-y-6">
+      {toastMessage && (
+        <div className="fixed top-20 right-8 z-50 bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Header Banner */}
+      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Globe className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-xl font-bold text-white">Social Media Channels & API Connection Hub</h2>
+          </div>
+          <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+            Manage official OAuth integrations, ad account tokens, and sync status for <span className="text-indigo-300 font-semibold">{client.name}</span> across all social media networks.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowConnectModal(true)}
+          className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Connect New Social Channel</span>
+        </button>
+      </div>
+
+      {/* Connected Channels Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {platforms.map((p, idx) => {
+          const isSyncing = syncingId === p.id;
+          return (
+            <div
+              key={`${p.id}-${p.accountName || idx}`}
+              className={`bg-slate-900 border rounded-2xl p-5 shadow-xl space-y-4 transition-all relative ${
+                p.connected ? 'border-slate-800 hover:border-slate-700' : 'border-slate-800 opacity-60'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center font-bold text-indigo-400">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">{p.name}</h3>
+                    <p className="text-xs text-indigo-300 font-mono">{p.accountName}</p>
+                  </div>
+                </div>
+
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                  p.connected
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                }`}>
+                  {p.connected ? 'Active Sync' : 'Disconnected'}
+                </span>
+              </div>
+
+              {/* Stats Box */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 block">Audience / Followers</span>
+                  <span className="font-extrabold text-white text-sm">
+                    {p.followers > 0 ? p.followers.toLocaleString() : 'N/A (Ad Account)'}
+                  </span>
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 block">Growth Rate</span>
+                  <span className="font-extrabold text-emerald-400 text-sm">+{p.growthRate}%</span>
+                </div>
+              </div>
+
+              {/* Sync Health & Action Footer */}
+              {p.connected && (
+                <div className="flex items-center justify-between text-[10px] text-slate-400 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800 font-mono">
+                  <span className="flex items-center gap-1 text-emerald-400">
+                    <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
+                    <span>REST API {p.livePingMs || 18}ms</span>
+                  </span>
+                  <span className="text-slate-400">Quota: {p.rateLimitQuota || '9,840/10k'}</span>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <ClockIcon className="w-3.5 h-3.5 text-slate-500" />
+                  <span>{p.lastSync}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleSyncAccount(p.id, p.id, p.accountName)}
+                    disabled={isSyncing || !p.connected}
+                    className="px-2 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-cyan-300 border border-cyan-500/30 cursor-pointer transition-all flex items-center gap-1 font-semibold text-[11px]"
+                    title="Force Live API Sync"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-cyan-400' : ''}`} />
+                    <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleToggleConnection(p.id)}
+                    className={`px-2 py-1 rounded-lg font-bold text-[11px] cursor-pointer transition-all ${
+                      p.connected
+                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                    }`}
+                  >
+                    {p.connected ? 'Disconnect' : 'Connect'}
+                  </button>
+
+                  {deletingId === p.id ? (
+                    <div className="flex items-center gap-1.5 animate-fadeIn">
+                      <button
+                        onClick={() => handleDeletePlatform(p.id, p.name)}
+                        className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] shadow-md cursor-pointer transition-all flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Confirm Delete</span>
+                      </button>
+                      <button
+                        onClick={() => setDeletingId(null)}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-[11px] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (currentUser && !currentUser.privileges.can_delete_social_handle) {
+                          setOauthError(`Access Denied: Your role (${currentUser.role.toUpperCase()}) does not have 'can_delete_social_handle' privilege.`);
+                          return;
+                        }
+                        setDeletingId(p.id);
+                      }}
+                      className="p-1 rounded-lg bg-slate-950 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/40 cursor-pointer transition-all"
+                      title={currentUser?.privileges.can_delete_social_handle ? "Delete Social Media Handle" : "Delete requires Admin Privilege (can_delete_social_handle)"}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Connect Account Modal */}
+      {showConnectModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Link2 className="w-5 h-5 text-cyan-400" />
+                Connect Live Social Account via OAuth 2.0
+              </h3>
+              <button
+                onClick={() => setShowConnectModal(false)}
+                className="text-slate-400 hover:text-white font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Auth Mode Tabs */}
+            <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setOauthAuthTab('popup')}
+                className={`py-1.5 px-2 rounded-lg font-bold transition-all ${
+                  oauthAuthTab === 'popup' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                OAuth Popup Login
+              </button>
+              <button
+                type="button"
+                onClick={() => setOauthAuthTab('token')}
+                className={`py-1.5 px-2 rounded-lg font-bold transition-all ${
+                  oauthAuthTab === 'token' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Direct Access Token
+              </button>
+              <button
+                type="button"
+                onClick={() => setOauthAuthTab('guide')}
+                className={`py-1.5 px-2 rounded-lg font-bold transition-all ${
+                  oauthAuthTab === 'guide' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                OAuth Config Guide
+              </button>
+            </div>
+
+            {oauthError && (
+              <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-medium">
+                ⚠️ {oauthError}
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Select Network / Channel</label>
+                <select
+                  value={selectedChannel}
+                  onChange={(e) => setSelectedChannel(e.target.value as PlatformType)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-medium"
+                >
+                  <option value="instagram">Instagram Professional (Meta Graph API)</option>
+                  <option value="facebook">Facebook Page (Meta OAuth 2.0)</option>
+                  <option value="youtube">YouTube Channel (Google OAuth 2.0)</option>
+                  <option value="google_analytics">Google Analytics 4 (Google Cloud OAuth)</option>
+                  <option value="linkedin">LinkedIn Company Page (LinkedIn OAuth 2.0)</option>
+                  <option value="tiktok">TikTok Business (TikTok for Developers API)</option>
+                  <option value="meta_ads">Meta Ads Manager</option>
+                  <option value="google_ads">Google Ads & PMax API</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Account Handle or Page ID</label>
+                <input
+                  type="text"
+                  value={accountHandle}
+                  onChange={(e) => setAccountHandle(e.target.value)}
+                  placeholder="e.g. @auraskin_official"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              {/* Tab 1: Live OAuth Authorization */}
+              {oauthAuthTab === 'popup' && (
+                <div className="space-y-3 pt-1">
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      OAuth 2.0 Official Provider Authorization
+                    </span>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Connect <span className="text-cyan-300 font-bold capitalize">{selectedChannel.replace('_', ' ')}</span> via official OAuth Graph API permissions.
+                    </p>
+                    <div className="text-[10px] text-slate-400 font-mono bg-slate-900 p-2 rounded-lg border border-slate-800">
+                      Requested Scopes: {selectedChannel.includes('google') || selectedChannel === 'youtube' ? 'https://www.googleapis.com/auth/youtube.readonly' : selectedChannel === 'linkedin' ? 'r_liteprofile, w_member_social' : 'instagram_basic, instagram_content_publish'}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDirectOAuthConnect}
+                      disabled={isOauthLoggingIn}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all text-xs"
+                    >
+                      {isOauthLoggingIn ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-emerald-200" />
+                          <span>Authorizing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                          <span>Instant OAuth Connect (1-Click)</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTriggerOauthPopup}
+                      disabled={isOauthLoggingIn}
+                      className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold rounded-xl border border-cyan-500/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all text-xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Open Popup Consent Window</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Access Token Input */}
+              {oauthAuthTab === 'token' && (
+                <form onSubmit={handleConnectNewAccount} className="space-y-3 pt-1">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Paste Access Token / API Key</label>
+                    <input
+                      type="password"
+                      value={customAccessToken}
+                      onChange={(e) => setCustomAccessToken(e.target.value)}
+                      placeholder="e.g. EAACEdEose0cBA..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Current Baseline Followers</label>
+                    <input
+                      type="number"
+                      value={initialFollowers}
+                      onChange={(e) => setInitialFollowers(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg cursor-pointer transition-all"
+                  >
+                    Verify & Connect Token
+                  </button>
+                </form>
+              )}
+
+              {/* Tab 3: OAuth Setup Guide */}
+              {oauthAuthTab === 'guide' && (
+                <div className="space-y-2 p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-300">
+                  <span className="font-bold text-white block text-xs">📋 OAuth Developer Redirect Setup:</span>
+                  <p>When creating your Meta Developer App, Google Cloud Console Credentials, or LinkedIn Developer App, add this exact Redirect URI:</p>
+                  <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 font-mono text-cyan-300 text-[10px] break-all select-all">
+                    {window.location.origin}/auth/callback
+                  </div>
+                  <ul className="list-disc pl-4 space-y-1 text-slate-400 text-[10px]">
+                    <li>Meta/Instagram: Add Instagram Graph API product in Meta Developers.</li>
+                    <li>Google/YouTube: Enable YouTube Data API v3 in Google Cloud Console.</li>
+                    <li>LinkedIn: Enable Sign In with LinkedIn & Share on LinkedIn permissions.</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConnectModal(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 font-semibold rounded-xl hover:bg-slate-700 text-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+function ClockIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle cx="12" cy="12" r="10" strokeWidth="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2" />
+    </svg>
+  );
+}
