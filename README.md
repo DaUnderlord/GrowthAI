@@ -37,7 +37,12 @@ Open http://localhost:3000
 5. In **Supabase Dashboard → Authentication → URL Configuration**, add your Vercel deployment URL(s) to **Site URL** and **Redirect URLs**.
 6. For WhatsApp webhooks, set Meta callback URL to `https://YOUR_DOMAIN/api/meta/webhook`.
 
-### Notes
+### Auth "Failed to fetch" troubleshooting
+
+1. **Vercel env vars** — set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for **Production** (and Preview if needed), then **Redeploy**. Vite bakes these in at build time.
+2. **Runtime fallback** — you can also set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (no `VITE_` prefix); the app loads them from `/api/public-config`.
+3. **Supabase Auth URLs** — in Supabase Dashboard → Authentication → URL Configuration, set **Site URL** to your Vercel domain and add it under **Redirect URLs** (e.g. `https://your-app.vercel.app/**`).
+4. **Project active** — confirm the Supabase project is not paused in the Supabase dashboard.
 
 - AI routes use up to 60s serverless timeout (Pro plan recommended for long Gemini calls).
 - Static SPA is served from `dist/`; client routes fall back to `index.html`.

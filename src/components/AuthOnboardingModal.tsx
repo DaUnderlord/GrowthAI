@@ -6,6 +6,7 @@ import {
   loginWithEmail,
   loginWithGoogle,
   resetPasswordForEmail,
+  isSupabaseConfigured,
 } from '../lib/supabase';
 import { BrandMark } from './BrandIcons';
 
@@ -212,6 +213,16 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
             <BrandMark className="h-9 w-9" />
             <span className="font-display text-xl text-white">GrowthOS</span>
           </div>
+
+          {!isSupabaseConfigured() && (
+            <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              Supabase is not configured for this deployment. In Vercel, add{' '}
+              <code className="text-amber-50">VITE_SUPABASE_URL</code> and{' '}
+              <code className="text-amber-50">VITE_SUPABASE_ANON_KEY</code> (or{' '}
+              <code className="text-amber-50">SUPABASE_URL</code> +{' '}
+              <code className="text-amber-50">SUPABASE_ANON_KEY</code>), then redeploy.
+            </div>
+          )}
 
           {loginError && (
             <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">

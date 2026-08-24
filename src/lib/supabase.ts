@@ -17,23 +17,79 @@ import { INITIAL_MOCK_CALENDAR } from '../data/mockCalendar';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Auth and database calls will fail until .env is configured.'
+const AUTH_CLIENT_OPTIONS = {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+};
+
+function hasValidSupabaseConfig(url?: string | null, key?: string | null): boolean {
+  if (!url || !key) return false;
+  if (url.includes('YOUR_PROJECT') || url.includes('placeholder.supabase.co')) return false;
+  if (key.includes('YOUR_SUPABASE') || key === 'placeholder-key') return false;
+  return true;
+}
+
+let runtimeSupabaseUrl: string | null = null;
+let runtimeSupabaseAnonKey: string | null = null;
+let bootstrapComplete = false;
+
+export let supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-key',
+  AUTH_CLIENT_OPTIONS
+);
+
+export function isSupabaseConfigured(): boolean {
+  return (
+    hasValidSupabaseConfig(supabaseUrl, supabaseAnonKey) ||
+    hasValidSupabaseConfig(runtimeSupabaseUrl, runtimeSupabaseAnonKey)
   );
 }
 
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key',
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
+/** Load Supabase URL/key from build env or /api/public-config (Vercel runtime). */
+export async function bootstrapSupabaseConfig(): Promise<boolean> {
+  if (bootstrapComplete && isSupabaseConfigured()) return true;
+
+  if (hasValidSupabaseConfig(supabaseUrl, supabaseAnonKey)) {
+    bootstrapComplete = true;
+    return true;
   }
-);
+
+  try {
+    const res = await fetch('/api/public-config');
+    if (!res.ok) throw new Error(`Config request failed (${res.status})`);
+    const data = (await res.json()) as {
+      configured?: boolean;
+      supabaseUrl?: string;
+      supabaseAnonKey?: string;
+    };
+    if (data.configured && hasValidSupabaseConfig(data.supabaseUrl, data.supabaseAnonKey)) {
+      runtimeSupabaseUrl = data.supabaseUrl!;
+      runtimeSupabaseAnonKey = data.supabaseAnonKey!;
+      supabase = createClient(data.supabaseUrl!, data.supabaseAnonKey!, AUTH_CLIENT_OPTIONS);
+      bootstrapComplete = true;
+      return true;
+    }
+  } catch (err) {
+    console.error('Failed to load Supabase public config:', err);
+  }
+
+  bootstrapComplete = true;
+  return false;
+}
+
+function asAuthError(err: unknown): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
+    return new Error(
+      'Cannot reach Supabase. Confirm the project is active, then set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel (or SUPABASE_URL + SUPABASE_ANON_KEY) and redeploy.'
+    );
+  }
+  return err instanceof Error ? err : new Error(message);
+}
 
 export function getDefaultPrivileges(role: UserRole): UserPrivileges {
   if (role === 'super_admin' || role === 'admin') {
@@ -419,11 +475,20 @@ export async function registerUser(
   role: UserRole = 'admin',
   avatarUrl?: string
 ): Promise<UserProfile> {
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment, then reload.'
+    );
+  }
+
   const avatar =
     avatarUrl ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=6366f1&color=fff&size=128`;
 
-  const { data, error } = await supabase.auth.signUp({
+  let data;
+  let error;
+  try {
+    ({ data, error } = await supabase.auth.signUp({
     email,
     password: pass,
     options: {
@@ -437,7 +502,10 @@ export async function registerUser(
         privileges: getDefaultPrivileges(role),
       },
     },
-  });
+  }));
+  } catch (err) {
+    throw asAuthError(err);
+  }
 
   if (error) throw new Error(error.message);
   if (!data.user) throw new Error('Registration succeeded but no user was returned.');
@@ -464,20 +532,44 @@ export async function registerUser(
 }
 
 export async function loginWithEmail(email: string, pass: string): Promise<UserProfile> {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment, then reload.'
+    );
+  }
+
+  let data;
+  let error;
+  try {
+    ({ data, error } = await supabase.auth.signInWithPassword({ email, password: pass }));
+  } catch (err) {
+    throw asAuthError(err);
+  }
   if (error) throw new Error(error.message);
   if (!data.user) throw new Error('Login succeeded but no user was returned.');
   return ensureProfileFromAuthUser(data.user);
 }
 
 export async function loginWithGoogle(): Promise<UserProfile> {
-  const { data, error } = await supabase.auth.signInWithOAuth({
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment, then reload.'
+    );
+  }
+
+  let data;
+  let error;
+  try {
+    ({ data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: window.location.origin,
       queryParams: { access_type: 'offline', prompt: 'consent' },
     },
-  });
+  }));
+  } catch (err) {
+    throw asAuthError(err);
+  }
 
   if (error) throw new Error(error.message);
 

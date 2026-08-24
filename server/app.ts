@@ -28,6 +28,9 @@ export function createApp(): Express {
 
   app.get("/api/health", (_req, res) => {
     const ai = getAiStatus();
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+    const supabaseAnonKey =
+      process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
     res.json({
       status: "ok",
       hasApiKey: ai.configured,
@@ -35,8 +38,21 @@ export function createApp(): Express {
       hasWhatsAppConfig: Boolean(
         process.env.WHATSAPP_ACCESS_TOKEN || process.env.SUPABASE_SERVICE_ROLE_KEY
       ),
+      supabaseConfigured: Boolean(supabaseUrl && supabaseAnonKey),
       appUrl: getAppUrl(),
       timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Public browser-safe Supabase config (anon key is publishable).
+  app.get("/api/public-config", (_req, res) => {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+    const supabaseAnonKey =
+      process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+    res.json({
+      configured: Boolean(supabaseUrl && supabaseAnonKey),
+      supabaseUrl,
+      supabaseAnonKey,
     });
   });
 
