@@ -7,6 +7,20 @@ import {
   WhatsAppAccount,
 } from '../types';
 import { supabase } from './supabase';
+import { readJsonResponse } from './httpJson';
+
+async function parseApiResponse<T extends { success?: boolean; error?: string }>(
+  res: Response,
+  fallbackError: string
+): Promise<T> {
+  const parsed = await readJsonResponse<T>(res);
+  if (parsed.ok === false) {
+    throw new Error(parsed.error);
+  }
+  const data = parsed.data;
+  if (!res.ok || data.success === false) throw new Error(data.error || fallbackError);
+  return data;
+}
 
 function mapAccount(row: any): WhatsAppAccount {
   return {
@@ -104,8 +118,10 @@ export async function fetchWhatsAppAccounts(): Promise<{
 }> {
   const headers = await authHeaders();
   const res = await fetch('/api/whatsapp/accounts', { headers });
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load WhatsApp accounts');
+  const data = await parseApiResponse<{ success: boolean; accounts?: any[]; webhookUrl: string; error?: string }>(
+    res,
+    'Failed to load WhatsApp accounts'
+  );
   return {
     accounts: (data.accounts || []).map(mapAccount),
     webhookUrl: data.webhookUrl,
@@ -126,8 +142,10 @@ export async function connectWhatsAppAccount(input: {
     headers,
     body: JSON.stringify(input),
   });
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.error || 'Failed to connect WhatsApp');
+  const data = await parseApiResponse<{ success: boolean; account: any; webhookUrl: string; error?: string }>(
+    res,
+    'Failed to connect WhatsApp'
+  );
   return { account: mapAccount(data.account), webhookUrl: data.webhookUrl };
 }
 
@@ -138,8 +156,7 @@ export async function sendWhatsAppReply(conversationId: string, text: string) {
     headers,
     body: JSON.stringify({ conversationId, text }),
   });
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.error || 'Failed to send message');
+  const data = await parseApiResponse<{ success: boolean; error?: string }>(res, 'Failed to send message');
   return data;
 }
 
@@ -161,8 +178,10 @@ export async function patchConversation(
     headers,
     body: JSON.stringify(patch),
   });
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update conversation');
+  const data = await parseApiResponse<{ success: boolean; conversation: any; error?: string }>(
+    res,
+    'Failed to update conversation'
+  );
   return mapConversation(data.conversation);
 }
 
@@ -177,8 +196,10 @@ export async function suggestWhatsAppReply(input: {
     headers,
     body: JSON.stringify(input),
   });
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.error || 'Failed to suggest reply');
+  const data = await parseApiResponse<{ success: boolean; suggestion: string; error?: string }>(
+    res,
+    'Failed to suggest reply'
+  );
   return data.suggestion as string;
 }
 

@@ -22,6 +22,7 @@ export interface WorkspacePreferences {
   aiAutopilot?: boolean;
   currency?: CurrencyCode;
   whiteLabelMode?: boolean;
+  featureTourSeen?: boolean;
 }
 
 export interface UserProfile {

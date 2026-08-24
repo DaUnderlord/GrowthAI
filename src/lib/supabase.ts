@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { MOCK_CAMPAIGN_DATA } from '../data/mockCampaigns';
 import { INITIAL_MOCK_CALENDAR } from '../data/mockCalendar';
+import { readJsonResponse } from './httpJson';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -60,12 +61,17 @@ export async function bootstrapSupabaseConfig(): Promise<boolean> {
 
   try {
     const res = await fetch('/api/public-config');
-    if (!res.ok) throw new Error(`Config request failed (${res.status})`);
-    const data = (await res.json()) as {
+    const parsed = await readJsonResponse<{
       configured?: boolean;
       supabaseUrl?: string;
       supabaseAnonKey?: string;
-    };
+    }>(res);
+    if (parsed.ok === false) {
+      console.error('Failed to load Supabase public config:', parsed.error);
+      bootstrapComplete = true;
+      return false;
+    }
+    const data = parsed.data;
     if (data.configured && hasValidSupabaseConfig(data.supabaseUrl, data.supabaseAnonKey)) {
       runtimeSupabaseUrl = data.supabaseUrl!;
       runtimeSupabaseAnonKey = data.supabaseAnonKey!;
@@ -315,9 +321,10 @@ function mapCalendarItem(row: CalendarRow): ContentCalendarItem {
   };
 }
 
-function clientToRow(client: ClientProfile) {
+function clientToRow(client: ClientProfile, orgId?: string | null) {
   return {
     id: client.id,
+    org_id: orgId ?? null,
     name: client.name,
     industry: client.industry,
     industry_label: client.industryLabel,
@@ -473,7 +480,8 @@ export async function registerUser(
   phone: string = '',
   companyName: string = '',
   role: UserRole = 'admin',
-  avatarUrl?: string
+  avatarUrl?: string,
+  options?: { industry?: string; goals?: string[] }
 ): Promise<UserProfile> {
   if (!isSupabaseConfigured()) {
     throw new Error(
@@ -524,11 +532,35 @@ export async function registerUser(
     avatar,
   });
 
-  await createOrganizationForUser(profile.id, companyName || `${fullName}'s Agency`);
   await acceptPendingInviteForEmail(email, profile.id);
 
+  const orgId = await createOrganizationForUser(profile.id, companyName || `${fullName}'s Agency`);
+
+  if (orgId) {
+    const { count } = await supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', orgId);
+    if ((count ?? 0) === 0) {
+      await createStarterClientForOrg(orgId, {
+        name: companyName.trim() || `${fullName.split(' ')[0]}'s Brand`,
+        industry: options?.industry,
+        primaryGoal: goalTextFromWizard(options?.goals),
+      });
+    }
+  }
+
   const refreshed = await fetchProfile(profile.id);
-  return refreshed || profile;
+  const withOrg = refreshed || profile;
+
+  const tourProfile = await saveWorkspacePreferences(withOrg.id, {
+    preferences: {
+      ...(withOrg.preferences || {}),
+      featureTourSeen: false,
+    },
+  });
+
+  return tourProfile;
 }
 
 export async function loginWithEmail(email: string, pass: string): Promise<UserProfile> {
@@ -747,8 +779,69 @@ export function subscribeToAuthState(
   };
 }
 
-// --- SEED ---
+// --- SEED (dev/demo only — not called in production app flow) ---
 
+const INDUSTRY_LABELS: Record<string, string> = {
+  saas: 'SaaS / Tech',
+  fmcg: 'FMCG & Consumer Goods',
+  education: 'Education',
+  healthcare: 'Healthcare & Wellness',
+  hospitality: 'Hospitality',
+  realestate: 'Real Estate',
+  sme: 'Local SME',
+  politics: 'Politics & Public Affairs',
+};
+
+function goalTextFromWizard(goals?: string[]): string {
+  const map: Record<string, string> = {
+    lead_gen: 'Lead generation',
+    viral_reach: 'Reach & awareness',
+    sales: 'Sales conversion',
+    automation: 'Team automation',
+  };
+  if (!goals?.length) return 'Grow audience and generate qualified leads';
+  return goals.map((g) => map[g] || g).join(' · ');
+}
+
+export async function createStarterClientForOrg(
+  orgId: string,
+  input: { name: string; industry?: string; primaryGoal?: string }
+): Promise<ClientProfile> {
+  const industry = (input.industry || 'sme') as ClientProfile['industry'];
+  const name = input.name.trim() || 'My First Brand';
+  const client: ClientProfile = {
+    id: `client-${crypto.randomUUID()}`,
+    name,
+    industry,
+    industryLabel: INDUSTRY_LABELS[industry] || 'Local SME',
+    logo: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=6366f1&color=fff&size=128`,
+    website: '',
+    tier: 'Starter',
+    monthlyBudget: 0,
+    primaryGoal: input.primaryGoal || 'Grow audience and generate qualified leads',
+    growthScore: 0,
+    viralityScore: 0,
+    engagementHealth: 0,
+    sentimentScore: 0,
+    conversionScore: 0,
+    roiMultiplier: 0,
+    platforms: [],
+    nextPaymentDate: '',
+    lastPaymentDate: '',
+    paymentStatus: 'outstanding',
+    outstandingAmount: 0,
+    invoices: [],
+    recentGrowthTrends: [],
+  };
+
+  const { error } = await supabase.from('clients').insert({
+    ...clientToRow(client, orgId),
+  });
+  if (error) throw new Error(error.message);
+  return client;
+}
+
+/** @deprecated Global demo seed — kept for local dev scripts only. */
 export async function seedDatabaseIfEmpty(
   initialClients: ClientProfile[],
   _initialUsers: UserProfile[]
@@ -765,7 +858,7 @@ export async function seedDatabaseIfEmpty(
 
     if ((clientCount ?? 0) === 0 && initialClients.length > 0) {
       console.log('Seeding initial client data into Supabase...');
-      const { error } = await supabase.from('clients').upsert(initialClients.map(clientToRow));
+      const { error } = await supabase.from('clients').upsert(initialClients.map((c) => clientToRow(c)));
       if (error) console.warn('Client seed error:', error.message);
     }
 
@@ -802,14 +895,32 @@ export function subscribeToClients(onUpdate: (clients: ClientProfile[]) => void)
   let channel: RealtimeChannel | null = null;
 
   const load = async () => {
-    const { data, error } = await supabase.from('clients').select('*').order('name');
-    if (error) {
-      console.warn('Error loading clients:', error.message);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      onUpdate([]);
       return;
     }
-    if (data && data.length > 0) {
-      onUpdate((data as ClientRow[]).map(mapClient));
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    let query = supabase.from('clients').select('*').order('name');
+    if (profile?.org_id) {
+      query = query.eq('org_id', profile.org_id);
     }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Error loading clients:', error.message);
+      onUpdate([]);
+      return;
+    }
+    onUpdate((data as ClientRow[] | null)?.map(mapClient) || []);
   };
 
   void load();
@@ -854,8 +965,10 @@ export function subscribeToUsers(onUpdate: (users: UserProfile[]) => void): () =
   };
 }
 
-export async function saveClient(client: ClientProfile) {
-  const { error } = await supabase.from('clients').upsert(clientToRow(client), { onConflict: 'id' });
+export async function saveClient(client: ClientProfile, orgId?: string | null) {
+  const { error } = await supabase
+    .from('clients')
+    .upsert(clientToRow(client, orgId), { onConflict: 'id' });
   if (error) console.error('Failed to save client:', error.message);
 }
 

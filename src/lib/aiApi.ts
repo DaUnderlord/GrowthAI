@@ -1,6 +1,4 @@
-/**
- * Shared client helper for GrowthOS AI API calls.
- */
+import { readJsonResponse } from './httpJson';
 export type AiApiResult<T> = {
   ok: boolean;
   data?: T;
@@ -19,7 +17,11 @@ export async function callGrowthAi<T = any>(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const data = await res.json().catch(() => ({}));
+    const parsed = await readJsonResponse<any>(res);
+    if (parsed.ok === false) {
+      return { ok: false, error: parsed.error, status: parsed.status };
+    }
+    const data = parsed.data;
     if (!res.ok || data?.success === false) {
       return {
         ok: false,

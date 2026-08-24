@@ -154,7 +154,9 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
         regFullName.trim() || 'Agency Leader',
         regPhone,
         agencyName.trim() || 'Growth Agency',
-        regRole
+        regRole,
+        undefined,
+        { industry: selectedIndustry, goals: selectedGoals }
       );
       onRegisterUser?.(newUser);
       onLogin(newUser);

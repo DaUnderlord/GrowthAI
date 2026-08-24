@@ -183,6 +183,11 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
       <div className="surface-panel p-5 sm:p-6">
         <p className="eyebrow-label">Growth AI Suite</p>
         <h2 className="font-display mt-1 text-3xl font-medium text-white">Intelligence for {client.name}</h2>
+        {tab === 'signals' && (
+          <p className="mt-2 text-xs text-slate-500">
+            Sample performance signals shown until live social data is connected for this brand.
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap gap-1">
           {tabs.map((t) => (
             <button

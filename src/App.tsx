@@ -16,12 +16,10 @@ import { TeamPrivilegesModal } from './components/TeamPrivilegesModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { SettingsView } from './components/SettingsView';
 import { AuthOnboardingModal } from './components/AuthOnboardingModal';
+import { FeatureOnboardingModal } from './components/FeatureOnboardingModal';
 import { SplashScreen } from './components/SplashScreen';
-import { MOCK_CLIENTS } from './data/mockClients';
-import { MOCK_USERS } from './data/mockUsers';
 import { ClientProfile, CurrencyCode, UserProfile } from './types';
 import {
-  seedDatabaseIfEmpty,
   subscribeToClients,
   subscribeToUsers,
   subscribeToAuthState,
@@ -30,6 +28,7 @@ import {
   logoutUser,
   updatePassword,
   deleteProfile,
+  saveWorkspacePreferences,
 } from './lib/supabase';
 
 export default function App() {
@@ -51,6 +50,7 @@ export default function App() {
   const [splashDone, setSplashDone] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [showFeatureTour, setShowFeatureTour] = useState(false);
   const [isPrivilegesModalOpen, setIsPrivilegesModalOpen] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryPassword, setRecoveryPassword] = useState('');
@@ -102,13 +102,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    let cancelled = false;
-
-    (async () => {
-      await seedDatabaseIfEmpty(MOCK_CLIENTS, MOCK_USERS);
-      if (cancelled) return;
-      setDataReady(true);
-    })();
+    setDataReady(true);
 
     const unsubscribeClients = subscribeToClients((liveClients) => {
       setClients(liveClients);
@@ -138,11 +132,17 @@ export default function App() {
     });
 
     return () => {
-      cancelled = true;
       unsubscribeClients();
       unsubscribeUsers();
     };
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || showRecovery) return;
+    if (currentUser.preferences?.featureTourSeen === false) {
+      setShowFeatureTour(true);
+    }
+  }, [isAuthenticated, currentUser, showRecovery]);
 
   const persistClients = async (next: ClientProfile[]) => {
     setClients(next);
@@ -166,9 +166,11 @@ export default function App() {
 
   useEffect(() => {
     fetch('/api/health')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && typeof data.hasApiKey === 'boolean') setHasApiKey(data.hasApiKey);
+      .then(async (res) => {
+        const parsed = await import('./lib/httpJson').then((m) => m.readJsonResponse<any>(res));
+        if (parsed.ok && typeof parsed.data?.hasApiKey === 'boolean') {
+          setHasApiKey(parsed.data.hasApiKey);
+        }
       })
       .catch(() => setHasApiKey(false));
   }, []);
@@ -200,6 +202,22 @@ export default function App() {
     }
   };
 
+  const handleFeatureTourComplete = async () => {
+    setShowFeatureTour(false);
+    if (!currentUser) return;
+    try {
+      const updated = await saveWorkspacePreferences(currentUser.id, {
+        preferences: {
+          ...(currentUser.preferences || {}),
+          featureTourSeen: true,
+        },
+      });
+      setCurrentUser(updated);
+    } catch (err) {
+      console.warn('Could not save tour preference:', err);
+    }
+  };
+
   if (briefToken) {
     return <CalendarBriefView token={briefToken} />;
   }
@@ -208,14 +226,14 @@ export default function App() {
     return <SplashScreen ready={authReady} onFinished={handleSplashFinished} />;
   }
 
-  const activeUser = currentUser || MOCK_USERS[0];
+  const activeUser = currentUser;
   const activeClient = selectedClient;
 
   return (
     <div className="flex min-h-screen flex-col bg-transparent text-slate-100 font-sans">
       <HeaderNav
-        clients={clients.length ? clients : MOCK_CLIENTS}
-        selectedClient={activeClient || MOCK_CLIENTS[0]}
+        clients={clients}
+        selectedClient={activeClient || clients[0] || null}
         onSelectClient={(c) => setSelectedClient(c)}
         mode={mode}
         setMode={(m) => setMode(m)}
@@ -232,8 +250,8 @@ export default function App() {
         <SidebarNav
           activeView={activeView}
           setActiveView={setActiveView}
-          selectedClient={activeClient || MOCK_CLIENTS[0]}
-          currentUser={activeUser}
+          selectedClient={activeClient || clients[0] || null}
+          currentUser={activeUser!}
           isAuthenticated={isAuthenticated}
           onLogout={handleLogout}
           onOpenProfileView={() => {
@@ -269,9 +287,19 @@ export default function App() {
                   Open sign in
                 </button>
               </div>
-            ) : !dataReady || !activeClient ? (
+            ) : !dataReady || !activeUser ? (
               <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-400">
                 Loading workspace data…
+              </div>
+            ) : !activeClient ? (
+              <div className="fade-rise flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center">
+                <h2 className="font-display text-2xl font-medium text-white">Create your first brand</h2>
+                <p className="max-w-md text-sm text-slate-400">
+                  Your workspace is empty. Add a client brand in Agency Hub to start campaigns, calendar planning, and AI insights.
+                </p>
+                <button onClick={() => setActiveView('agency')} className="primary-button">
+                  Open Agency Hub
+                </button>
               </div>
             ) : mode === 'blueprint' ? (
               <BlueprintExplorerView />
@@ -420,6 +448,9 @@ export default function App() {
             setCurrentUser(user);
             setIsAuthenticated(true);
             setIsAuthModalOpen(false);
+            if (user.preferences?.featureTourSeen === false) {
+              setShowFeatureTour(true);
+            }
           }}
           onRegisterUser={(newUser) => {
             setUsers((prev) => {
@@ -430,6 +461,12 @@ export default function App() {
           initialMode="signin"
         />
       )}
+
+      <FeatureOnboardingModal
+        isOpen={showFeatureTour && isAuthenticated}
+        userName={currentUser?.name}
+        onComplete={handleFeatureTourComplete}
+      />
 
       {showRecovery && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#070b12]/90 p-4 backdrop-blur-md">
