@@ -6,8 +6,8 @@ import { NAV_ICONS, NavIconId } from './BrandIcons';
 interface SidebarNavProps {
   activeView: string;
   setActiveView: (view: string) => void;
-  selectedClient: ClientProfile;
-  currentUser: UserProfile;
+  selectedClient: ClientProfile | null;
+  currentUser: UserProfile | null;
   isAuthenticated: boolean;
   onLogout: () => void;
   onOpenProfileView: () => void;
@@ -32,6 +32,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   setActiveView,
   selectedClient,
   currentUser,
+  isAuthenticated,
   onLogout,
   onOpenProfileView,
   onOpenProfileEdit,
@@ -72,7 +73,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         } ${isCollapsed && !mobileOpen ? 'lg:w-16' : 'lg:w-60'}`}
       >
         <div className="flex-1 space-y-3 overflow-y-auto px-2.5 py-4 scrollbar-none">
-          {(!isCollapsed || mobileOpen) && (
+          {(!isCollapsed || mobileOpen) && selectedClient && (
             <div className="px-2 pb-1">
               <p className="truncate text-xs text-slate-500">{selectedClient.name}</p>
             </div>
@@ -110,7 +111,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         </div>
 
         <div className="relative space-y-2 border-t border-white/[0.06] p-2.5">
-          {(!isCollapsed || mobileOpen) ? (
+          {currentUser && (!isCollapsed || mobileOpen) ? (
             <div className="relative">
               <button
                 onClick={() => setProfileMenuOpen(!profileMenuOpen)}
@@ -162,7 +163,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 </div>
               )}
             </div>
-          ) : (
+          ) : currentUser ? (
             <div className="flex flex-col items-center gap-2">
               <button onClick={() => onOpenProfileView()} title={currentUser.name}>
                 <img src={currentUser.avatar} alt="" className="h-8 w-8 rounded-lg object-cover" />
@@ -171,7 +172,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 <LogOut className="h-4 w-4" />
               </button>
             </div>
-          )}
+          ) : null}
 
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}

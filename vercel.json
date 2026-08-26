@@ -5,8 +5,12 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/auth/(.*)", "destination": "/api" },
+    { "source": "/api/growth/:path*", "destination": "/api" },
+    { "source": "/api/meta/:path*", "destination": "/api" },
+    { "source": "/api/whatsapp/:path*", "destination": "/api" },
+    { "source": "/api/socials/:path*", "destination": "/api" },
+    { "source": "/api/auth/:path*", "destination": "/api" },
+    { "source": "/auth/:path*", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {

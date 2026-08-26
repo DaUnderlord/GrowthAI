@@ -233,7 +233,7 @@ export default function App() {
     <div className="flex min-h-screen flex-col bg-transparent text-slate-100 font-sans">
       <HeaderNav
         clients={clients}
-        selectedClient={activeClient || clients[0] || null}
+        selectedClient={activeClient}
         onSelectClient={(c) => setSelectedClient(c)}
         mode={mode}
         setMode={(m) => setMode(m)}
@@ -241,17 +241,19 @@ export default function App() {
         currency={currency}
         setCurrency={setCurrency}
         currentUser={activeUser}
+        isAuthenticated={isAuthenticated}
         onOpenLoginModal={() => setIsAuthModalOpen(true)}
         onOpenPrivilegesModal={() => setIsPrivilegesModalOpen(true)}
         onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
       />
 
       <div className="relative flex flex-1">
+        {isAuthenticated && (
         <SidebarNav
           activeView={activeView}
           setActiveView={setActiveView}
-          selectedClient={activeClient || clients[0] || null}
-          currentUser={activeUser!}
+          selectedClient={activeClient}
+          currentUser={activeUser}
           isAuthenticated={isAuthenticated}
           onLogout={handleLogout}
           onOpenProfileView={() => {
@@ -270,10 +272,11 @@ export default function App() {
           mobileOpen={isMobileSidebarOpen}
           setMobileOpen={setIsMobileSidebarOpen}
         />
+        )}
 
         <main
           className={`flex-1 px-3 py-4 transition-all duration-300 sm:px-6 sm:py-6 lg:px-8 ${
-            isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
+            isAuthenticated ? (isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64') : ''
           }`}
         >
           <div className="mx-auto max-w-7xl pb-8">
@@ -316,14 +319,14 @@ export default function App() {
                 {activeView === 'calendar' && (
                   <ContentCalendarView
                     client={activeClient}
-                    users={users.length ? users : [activeUser]}
+                    users={users.length ? users : activeUser ? [activeUser] : []}
                     currentUser={activeUser}
                   />
                 )}
                 {activeView === 'whatsapp' && (
                   <WhatsAppInboxView
                     client={activeClient}
-                    users={users.length ? users : [activeUser]}
+                    users={users.length ? users : activeUser ? [activeUser] : []}
                     currentUser={activeUser}
                   />
                 )}
@@ -384,7 +387,7 @@ export default function App() {
                     isOpen
                     asPage
                     onClose={() => setActiveView('overview')}
-                    users={users.length ? users : [activeUser]}
+                    users={users.length ? users : activeUser ? [activeUser] : []}
                     currentUser={activeUser}
                     onUpdateUsers={(updatedUsers) => {
                       setUsers(updatedUsers);
@@ -420,8 +423,8 @@ export default function App() {
       <TeamPrivilegesModal
         isOpen={isPrivilegesModalOpen && isAuthenticated}
         onClose={() => setIsPrivilegesModalOpen(false)}
-        users={users.length ? users : [activeUser]}
-        currentUser={activeUser}
+        users={users.length ? users : activeUser ? [activeUser] : []}
+        currentUser={activeUser!}
         onUpdateUsers={(updatedUsers) => {
           setUsers(updatedUsers);
           const updatedSelf = updatedUsers.find((u) => u.id === activeUser.id);
