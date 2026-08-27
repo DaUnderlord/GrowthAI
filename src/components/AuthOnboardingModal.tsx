@@ -14,7 +14,7 @@ interface AuthOnboardingModalProps {
   isOpen: boolean;
   onClose: () => void;
   users: UserProfile[];
-  currentUser: UserProfile;
+  currentUser: UserProfile | null;
   isAuthenticated: boolean;
   onLogin: (user: UserProfile) => void;
   onRegisterUser?: (newUser: UserProfile) => void;
@@ -185,8 +185,8 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
           : 'Preparing workspace';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-[#070b12]/90 p-0 backdrop-blur-md sm:items-center sm:p-4">
-      <div className="relative flex h-full w-full max-w-5xl overflow-hidden bg-[#0a1018] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border sm:border-white/[0.08]">
+    <div className="fixed inset-0 z-[120] flex items-stretch justify-center bg-[#070b12]/95 p-0 backdrop-blur-md sm:items-center sm:p-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <div className="relative flex h-full min-h-0 w-full max-w-5xl overflow-hidden bg-[#0a1018] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border sm:border-white/[0.08]">
         {/* Atmospheric panel */}
         <div className="relative hidden w-[42%] overflow-hidden md:block">
           <img src="/brand/splash-hero.png" alt="" className="absolute inset-0 h-full w-full object-cover" />

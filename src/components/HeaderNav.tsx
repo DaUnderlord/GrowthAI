@@ -32,7 +32,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#070b12]/80 text-slate-100 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#070b12]/80 text-slate-100 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
       <div className="w-full px-4 sm:px-6">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-3">

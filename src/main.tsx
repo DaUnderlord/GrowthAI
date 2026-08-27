@@ -1,16 +1,16 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
-import { bootstrapSupabaseConfig } from './lib/supabase';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import './index.css';
 
-async function startApp() {
-  await bootstrapSupabaseConfig();
-  createRoot(document.getElementById('root')!).render(
+const rootEl = document.getElementById('root');
+if (rootEl) {
+  createRoot(rootEl).render(
     <StrictMode>
-      <App />
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
     </StrictMode>
   );
 }
-
-void startApp();

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>GrowthOS AI</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,7 +12,11 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="display:flex;min-height:100dvh;align-items:center;justify-content:center;background:#070b12;color:#94a3b8;font-family:system-ui,sans-serif;font-size:14px">
+        Loading GrowthOS…
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

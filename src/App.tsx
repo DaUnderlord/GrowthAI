@@ -29,6 +29,7 @@ import {
   updatePassword,
   deleteProfile,
   saveWorkspacePreferences,
+  bootstrapSupabaseConfig,
 } from './lib/supabase';
 
 export default function App() {
@@ -48,8 +49,9 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(true);
   const [showFeatureTour, setShowFeatureTour] = useState(false);
   const [isPrivilegesModalOpen, setIsPrivilegesModalOpen] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
@@ -65,38 +67,60 @@ export default function App() {
   const handleSplashFinished = useCallback(() => setSplashDone(true), []);
 
   useEffect(() => {
+    let cancelled = false;
+    let unsubscribeAuth: (() => void) | undefined;
+
+    void bootstrapSupabaseConfig().finally(() => {
+      if (cancelled) return;
+      setBootstrapped(true);
+
+      unsubscribeAuth = subscribeToAuthState(
+        (profile) => {
+          setCurrentUser(profile);
+          setIsAuthenticated(Boolean(profile));
+          setAuthReady(true);
+          if (!profile) {
+            setIsAuthModalOpen(true);
+            setClients([]);
+            setSelectedClient(null);
+            setUsers([]);
+            setDataReady(false);
+          } else if (profile.preferences?.currency) {
+            setCurrency(profile.preferences.currency);
+          }
+          if (profile?.preferences?.whiteLabelMode != null) {
+            setWhiteLabelMode(Boolean(profile.preferences.whiteLabelMode));
+          }
+        },
+        () => setShowRecovery(true)
+      );
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribeAuth?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAuthReady(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (splashDone && !isAuthenticated) {
+      setIsAuthModalOpen(true);
+    }
+  }, [splashDone, isAuthenticated]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     const clientId = params.get('client');
     if (view) setActiveView(view);
     if (clientId) {
-      // applied after clients load
       (window as any).__growthosShareClient = clientId;
     }
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToAuthState(
-      (profile) => {
-        setCurrentUser(profile);
-        setIsAuthenticated(Boolean(profile));
-        setAuthReady(true);
-        if (!profile) {
-          setIsAuthModalOpen(true);
-          setClients([]);
-          setSelectedClient(null);
-          setUsers([]);
-          setDataReady(false);
-        } else if (profile.preferences?.currency) {
-          setCurrency(profile.preferences.currency);
-        }
-        if (profile?.preferences?.whiteLabelMode != null) {
-          setWhiteLabelMode(Boolean(profile.preferences.whiteLabelMode));
-        }
-      },
-      () => setShowRecovery(true)
-    );
-    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -223,7 +247,7 @@ export default function App() {
   }
 
   if (!splashDone) {
-    return <SplashScreen ready={authReady} onFinished={handleSplashFinished} />;
+    return <SplashScreen ready={authReady || bootstrapped} onFinished={handleSplashFinished} />;
   }
 
   const activeUser = currentUser;

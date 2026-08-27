@@ -9,21 +9,28 @@ interface SplashScreenProps {
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({
   onFinished,
-  minDurationMs = 1600,
+  minDurationMs = 1200,
   ready = false,
 }) => {
   const [leaving, setLeaving] = useState(false);
 
+  const finish = React.useCallback(() => {
+    if (leaving) return;
+    setLeaving(true);
+    window.setTimeout(() => onFinished?.(), 420);
+  }, [leaving, onFinished]);
+
   useEffect(() => {
     if (!ready || leaving) return;
+    const timer = window.setTimeout(finish, minDurationMs);
+    return () => window.clearTimeout(timer);
+  }, [ready, minDurationMs, finish, leaving]);
 
-    const timer = setTimeout(() => {
-      setLeaving(true);
-      setTimeout(() => onFinished?.(), 420);
-    }, minDurationMs);
-
-    return () => clearTimeout(timer);
-  }, [ready, minDurationMs, onFinished, leaving]);
+  // Never block the app on slow mobile networks — dismiss splash after 3.5s max.
+  useEffect(() => {
+    const forceTimer = window.setTimeout(finish, 3500);
+    return () => window.clearTimeout(forceTimer);
+  }, [finish]);
 
   return (
     <div

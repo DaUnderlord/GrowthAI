@@ -60,7 +60,10 @@ export async function bootstrapSupabaseConfig(): Promise<boolean> {
   }
 
   try {
-    const res = await fetch('/api/public-config');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch('/api/public-config', { signal: controller.signal });
+    clearTimeout(timeout);
     const parsed = await readJsonResponse<{
       configured?: boolean;
       supabaseUrl?: string;
@@ -765,7 +768,19 @@ export function subscribeToAuthState(
     }
   };
 
-  supabase.auth.getSession().then(({ data }) => resolve(data.session));
+  supabase.auth
+    .getSession()
+    .then(({ data }) => resolve(data.session))
+    .catch((err) => {
+      console.warn('Supabase getSession failed:', err);
+      if (active) onUserChanged(null);
+    });
+
+  const sessionWatchdog = window.setTimeout(() => {
+    if (!active) return;
+    console.warn('Supabase getSession timed out');
+    onUserChanged(null);
+  }, 8000);
 
   const {
     data: { subscription },
@@ -775,6 +790,7 @@ export function subscribeToAuthState(
 
   return () => {
     active = false;
+    window.clearTimeout(sessionWatchdog);
     subscription.unsubscribe();
   };
 }
