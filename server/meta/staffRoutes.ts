@@ -1,56 +1,13 @@
-import type { Request, Response, NextFunction } from 'express';
-import { getSupabaseAdmin, getSupabaseAnonForJwt } from '../supabaseAdmin';
+import type { Request, Response } from 'express';
+import { getSupabaseAdmin } from '../supabaseAdmin';
+import { authOf, requireSupabaseUser } from '../authMiddleware';
 import { sendWhatsAppText } from './cloudApi';
 import { normalizePhone, resolveAccessToken } from './ingest';
 import { heuristicLeadAnalysis, suggestReplyWithGemini } from './aiLead';
 
 type GenerateFn = (prompt: string, system?: string) => Promise<string>;
 
-export type AuthContext = {
-  userId: string;
-  email?: string;
-  orgId: string | null;
-  role?: string;
-};
-
-export async function requireSupabaseUser(req: Request, res: Response, next: NextFunction) {
-  try {
-    const header = req.header('authorization') || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-    if (!token) {
-      res.status(401).json({ success: false, error: 'Missing Authorization bearer token' });
-      return;
-    }
-
-    const anon = getSupabaseAnonForJwt(token);
-    const { data: userData, error } = await anon.auth.getUser();
-    if (error || !userData.user) {
-      res.status(401).json({ success: false, error: 'Invalid session' });
-      return;
-    }
-
-    const admin = getSupabaseAdmin();
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('id, email, org_id, role')
-      .eq('id', userData.user.id)
-      .maybeSingle();
-
-    (req as any).auth = {
-      userId: userData.user.id,
-      email: userData.user.email,
-      orgId: profile?.org_id || null,
-      role: profile?.role,
-    } as AuthContext;
-    next();
-  } catch (err: any) {
-    res.status(401).json({ success: false, error: err.message || 'Auth failed' });
-  }
-}
-
-function authOf(req: Request): AuthContext {
-  return (req as any).auth as AuthContext;
-}
+export { requireSupabaseUser } from '../authMiddleware';
 
 export function registerWhatsAppStaffRoutes(app: any, generateGrowthAI?: GenerateFn) {
   app.get('/api/whatsapp/accounts', requireSupabaseUser, async (req: Request, res: Response) => {

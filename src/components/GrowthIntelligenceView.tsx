@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
-import { ClientProfile, PostPerformance } from '../types';
-import { MOCK_POSTS } from '../data/mockClients';
+import { ClientProfile, ContentCalendarItem, PostPerformance } from '../types';
 import { MultiAgentLabView } from './MultiAgentLabView';
 import { PredictionEngineView } from './PredictionEngineView';
 import { ContentOptimizerView } from './ContentOptimizerView';
 import { CompetitorIntelligenceView } from './CompetitorIntelligenceView';
 import { AutonomousReboostView } from './AutonomousReboostView';
 import { callGrowthAi } from '../lib/aiApi';
+import { buildPostSignals } from '../lib/clientInsights';
+import { subscribeToCalendarItems } from '../lib/supabase';
 
 interface GrowthIntelligenceProps {
   client: ClientProfile;
@@ -56,6 +57,26 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
   const [insightText, setInsightText] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState<string | null>(null);
+  const [calendarItems, setCalendarItems] = useState<ContentCalendarItem[]>([]);
+
+  useEffect(() => {
+    return subscribeToCalendarItems(client.id, setCalendarItems);
+  }, [client.id]);
+
+  const posts = useMemo(
+    () => buildPostSignals(client, calendarItems),
+    [client, calendarItems]
+  );
+
+  const aggregateReach = useMemo(
+    () => posts.reduce((sum, p) => sum + p.reach, 0),
+    [posts]
+  );
+  const aggregateSaveRate = useMemo(() => {
+    const impressions = posts.reduce((sum, p) => sum + p.impressions, 0);
+    const saves = posts.reduce((sum, p) => sum + p.saves, 0);
+    return impressions > 0 ? ((saves / impressions) * 100).toFixed(1) : '0.0';
+  }, [posts]);
 
   const tabs: { id: SuiteTab; label: string }[] = [
     { id: 'signals', label: 'Signals' },
@@ -67,8 +88,8 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
   ];
 
   const selectedPost = useMemo(
-    () => MOCK_POSTS.find((p) => p.id === selectedPostId) || null,
-    [selectedPostId]
+    () => posts.find((p) => p.id === selectedPostId) || null,
+    [posts, selectedPostId]
   );
 
   useEffect(() => {
@@ -185,7 +206,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
         <h2 className="font-display mt-1 text-3xl font-medium text-white">Intelligence for {client.name}</h2>
         {tab === 'signals' && (
           <p className="mt-2 text-xs text-slate-500">
-            Sample performance signals shown until live social data is connected for this brand.
+            Signals derive from your content calendar and connected social accounts for this brand.
           </p>
         )}
         <div className="mt-4 flex flex-wrap gap-1">
@@ -209,12 +230,16 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="surface-subtle p-4">
-              <p className="text-xs text-slate-500">Reach</p>
-              <p className="font-display mt-2 text-3xl font-medium text-white">1.15M</p>
+              <p className="text-xs text-slate-500">Reach (tracked posts)</p>
+              <p className="font-display mt-2 text-3xl font-medium text-white">
+                {aggregateReach > 0 ? aggregateReach.toLocaleString() : '—'}
+              </p>
             </div>
             <div className="surface-subtle p-4">
               <p className="text-xs text-slate-500">Save rate</p>
-              <p className="font-display mt-2 text-3xl font-medium text-white">14.8%</p>
+              <p className="font-display mt-2 text-3xl font-medium text-white">
+                {posts.length > 0 ? `${aggregateSaveRate}%` : '—'}
+              </p>
             </div>
           </div>
 
@@ -223,8 +248,13 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
               <p className="eyebrow-label">Recent content</p>
               <p className="mt-1 text-xs text-slate-500">Click a tile to open AI insights for that post.</p>
             </div>
+            {posts.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-slate-500">
+                Add calendar posts or connect social accounts in Agency Hub to populate signals.
+              </div>
+            ) : (
             <div className="divide-y divide-white/[0.05]">
-              {MOCK_POSTS.map((post) => {
+              {posts.map((post) => {
                 const selected = selectedPostId === post.id;
                 return (
                   <button
@@ -248,6 +278,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
                 );
               })}
             </div>
+            )}
           </div>
 
           {selectedPost && (

@@ -15,6 +15,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { ClientProfile, ConnectedPlatform, PlatformType, UserProfile } from '../types';
+import { authFetch } from '../lib/authFetch';
 
 interface SocialAccountsViewProps {
   client: ClientProfile;
@@ -66,8 +67,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   // Listen for OAuth Success postMessage from Popup window
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
+      if (event.origin !== window.location.origin) {
         return;
       }
 
@@ -77,12 +77,14 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
 
         setIsOauthLoggingIn(true);
         try {
-          const res = await fetch(`/api/auth/${platformType}/exchange-token`, {
+          const res = await authFetch(`/api/auth/${platformType}/exchange-token`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               code,
+              accessToken: customAccessToken || undefined,
               accountHandle: accountHandle || `@${platformType}_brand_official`,
+              initialFollowers,
+              growthRate: 0,
             }),
           });
           const data = await res.json();
@@ -155,12 +157,13 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     setIsOauthLoggingIn(true);
     setOauthError(null);
     try {
-      const res = await fetch(`/api/auth/${selectedChannel}/exchange-token`, {
+      const res = await authFetch(`/api/auth/${selectedChannel}/exchange-token`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code: `direct_oauth_auth_${Date.now()}`,
+          accessToken: customAccessToken || undefined,
           accountHandle: accountHandle || `@${selectedChannel}_official`,
+          initialFollowers,
+          growthRate: 0,
         }),
       });
       const data = await res.json();
@@ -260,12 +263,15 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   const handleSyncAccount = async (id: string, platformType: PlatformType, handle: string) => {
     setSyncingId(id);
     try {
-      const res = await fetch("/api/socials/sync-live", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const platform = platforms.find((p) => p.id === id);
+      const res = await authFetch('/api/socials/sync-live', {
+        method: 'POST',
         body: JSON.stringify({
           platform: platformType,
           accountHandle: handle,
+          followers: platform?.followers ?? 0,
+          growthRate: platform?.growthRate ?? 0,
+          accessToken: platform?.oauthTokenMasked,
         }),
       });
       const data = await res.json();

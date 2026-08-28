@@ -4,6 +4,7 @@ type Props = { children: ReactNode };
 type State = { error: Error | null };
 
 export class AppErrorBoundary extends Component<Props, State> {
+  declare readonly props: Readonly<Props>;
   state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
@@ -14,7 +15,7 @@ export class AppErrorBoundary extends Component<Props, State> {
     console.error('App crashed:', error, info);
   }
 
-  render() {
+  render(): ReactNode {
     if (this.state.error) {
       return (
         <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#070b12] px-6 text-center text-slate-200">

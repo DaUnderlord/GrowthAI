@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ClientProfile, CurrencyCode } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { computeOverviewInsights } from '../lib/clientInsights';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface OverviewDashboardProps {
@@ -16,23 +17,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
 }) => {
   const [attentionOpen, setAttentionOpen] = useState(false);
 
-  const insights = [
-    {
-      title: 'Follower growth is healthy',
-      meta: '+14.2%',
-      body: 'Strongest momentum is on creator-led short-form. Keep campaigns and calendar aligned to this.',
-    },
-    {
-      title: 'Revenue efficiency is solid',
-      meta: `${client.roiMultiplier}x ROI`,
-      body: 'High-intent educational content is converting better than broad promotional posts.',
-    },
-    {
-      title: 'Audience quality remains strong',
-      meta: `${client.engagementHealth}/100`,
-      body: 'Next gains will come from sharper segmentation and timing, not more volume.',
-    },
-  ];
+  const insights = computeOverviewInsights(client);
 
   const primary = insights[0];
   const rest = insights.slice(1);

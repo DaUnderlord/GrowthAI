@@ -12,7 +12,7 @@ import {
   Award
 } from 'lucide-react';
 import { ClientProfile } from '../types';
-import { MOCK_AGENTS } from '../data/mockClients';
+import { GROWTH_AGENT_ROSTER } from '../lib/clientInsights';
 import { callGrowthAi } from '../lib/aiApi';
 
 interface MultiAgentLabProps {
@@ -68,7 +68,7 @@ export const MultiAgentLabView: React.FC<MultiAgentLabProps> = ({ client }) => {
 
       {/* Agents Roster Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
-        {MOCK_AGENTS.map((agent) => (
+        {GROWTH_AGENT_ROSTER.map((agent) => (
           <div
             key={agent.id}
             className="bg-slate-900 border border-slate-800 p-3 rounded-xl hover:border-indigo-500/40 transition-all text-center space-y-1"
@@ -76,8 +76,8 @@ export const MultiAgentLabView: React.FC<MultiAgentLabProps> = ({ client }) => {
             <div className="text-2xl mb-1">{agent.avatar}</div>
             <h4 className="text-xs font-bold text-white truncate">{agent.name}</h4>
             <p className="text-[10px] text-indigo-300 font-medium truncate">{agent.role}</p>
-            <span className="inline-block text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 capitalize">
-              {agent.status}
+            <span className="inline-block text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800">
+              ready
             </span>
           </div>
         ))}

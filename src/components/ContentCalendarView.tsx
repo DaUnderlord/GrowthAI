@@ -30,6 +30,7 @@ import {
   subscribeToCalendarItems,
 } from '../lib/supabase';
 import { callGrowthAi } from '../lib/aiApi';
+import { parseCalendarAuditMarkdown } from '../lib/clientInsights';
 
 const CRAFT_OPTIONS: Array<{ id: CalendarCraftRole; label: string }> = [
   { id: 'designer', label: 'Graphic designer' },
@@ -157,6 +158,17 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
         setAiError(result.error);
       } else if (result.data.auditReport) {
         setAiReportMarkdown(result.data.auditReport);
+        const parsed = parseCalendarAuditMarkdown(result.data.auditReport);
+        setAuditReport((prev) => ({
+          ...prev,
+          overallScore: parsed.overallScore,
+          strengths: parsed.strengths.length ? parsed.strengths : prev.strengths,
+          gapsAndWeaknesses: parsed.gapsAndWeaknesses.length
+            ? parsed.gapsAndWeaknesses
+            : prev.gapsAndWeaknesses,
+          suggestedCorrectionsCount: parsed.suggestedCorrectionsCount,
+          campaignAlignmentScore: parsed.overallScore,
+        }));
       }
     } catch (err: any) {
       setAiError(err?.message || 'Calendar audit failed');
