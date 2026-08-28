@@ -96,29 +96,54 @@ $$;
 -- Ensure org helper exists (from WhatsApp migration; safe if already present)
 CREATE OR REPLACE FUNCTION public.current_profile_org_id()
 RETURNS uuid
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
+SET row_security = off
 AS $$
-  SELECT org_id FROM public.profiles WHERE id = auth.uid()
+DECLARE
+  result uuid;
+BEGIN
+  SELECT org_id INTO result FROM public.profiles WHERE id = auth.uid();
+  RETURN result;
+END;
 $$;
 
--- ---------------------------------------------------------------------------
--- Replace permissive RLS with org-scoped policies
--- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.current_profile_role()
+RETURNS public.user_role
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  result public.user_role;
+BEGIN
+  SELECT role INTO result FROM public.profiles WHERE id = auth.uid();
+  RETURN result;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.current_profile_org_id() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.current_profile_role() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.current_profile_org_id() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.current_profile_role() TO authenticated, service_role;
 ALTER TABLE public.team_invites ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "profiles_select_authenticated" ON public.profiles;
-CREATE POLICY "profiles_select_same_org"
+DROP POLICY IF EXISTS "profiles_select_same_org" ON public.profiles;
+CREATE POLICY "profiles_select_self"
+  ON public.profiles FOR SELECT
+  TO authenticated
+  USING (id = auth.uid());
+CREATE POLICY "profiles_select_org_mates"
   ON public.profiles FOR SELECT
   TO authenticated
   USING (
-    id = auth.uid()
-    OR (
-      org_id IS NOT NULL
-      AND org_id = public.current_profile_org_id()
-    )
+    org_id IS NOT NULL
+    AND org_id = public.current_profile_org_id()
   );
 
 DROP POLICY IF EXISTS "organizations_select_authenticated" ON public.organizations;
@@ -194,18 +219,10 @@ CREATE POLICY "team_invites_org_scoped"
   USING (
     org_id IS NOT NULL
     AND org_id = public.current_profile_org_id()
-    AND EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid()
-        AND p.role IN ('super_admin', 'admin', 'manager')
-    )
+    AND public.current_profile_role() IN ('super_admin', 'admin', 'manager')
   )
   WITH CHECK (
     org_id IS NOT NULL
     AND org_id = public.current_profile_org_id()
-    AND EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid()
-        AND p.role IN ('super_admin', 'admin', 'manager')
-    )
+    AND public.current_profile_role() IN ('super_admin', 'admin', 'manager')
   );
