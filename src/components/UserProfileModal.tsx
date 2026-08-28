@@ -15,7 +15,7 @@ import { saveUser } from '../lib/supabase';
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: UserProfile;
+  currentUser: UserProfile | null;
   onUpdateCurrentUser: (updated: UserProfile) => void;
   onLogout: () => void;
   initialTab?: 'view' | 'edit';
@@ -30,15 +30,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   initialTab = 'view',
 }) => {
   const [activeTab, setActiveTab] = useState<'view' | 'edit'>(initialTab);
-  const [name, setName] = useState(currentUser.name);
-  const [phone, setPhone] = useState(currentUser.phone || '');
-  const [companyName, setCompanyName] = useState(currentUser.companyName || '');
-  const [avatar, setAvatar] = useState(currentUser.avatar);
+  const [name, setName] = useState(currentUser?.name ?? '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [companyName, setCompanyName] = useState(currentUser?.companyName || '');
+  const [avatar, setAvatar] = useState(currentUser?.avatar ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !currentUser) return;
     setActiveTab(initialTab);
     setName(currentUser.name);
     setPhone(currentUser.phone || '');
@@ -47,7 +47,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     setSaveMessage(null);
   }, [isOpen, initialTab, currentUser]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !currentUser) return null;
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();

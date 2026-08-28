@@ -44,7 +44,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
-  const navItems: NavItem[] = [
+  const allNavItems: NavItem[] = [
     { id: 'overview', label: 'Overview', helper: 'Today at a glance' },
     { id: 'campaigns', label: 'Campaigns', helper: 'Objective-first planning' },
     { id: 'calendar', label: 'Content Calendar', helper: 'Schedule and production' },
@@ -57,6 +57,18 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     { id: 'team', label: 'Team', helper: 'Members and privileges' },
     { id: 'settings', label: 'Settings', helper: 'Workspace preferences' },
   ];
+  const navItems = allNavItems.filter((item) => {
+    if (!currentUser) return true;
+    const p = currentUser.privileges;
+    if (!p) return true;
+    const isAdmin = currentUser.role === 'admin' || currentUser.role === 'super_admin';
+    if (item.id === 'campaigns') return isAdmin || p.can_manage_campaigns;
+    if (item.id === 'calendar') return isAdmin || p.can_manage_calendar;
+    if (item.id === 'invoices') return isAdmin || p.can_invoice_management;
+    if (item.id === 'team') return isAdmin || p.can_add_team;
+    if (item.id === 'agency') return isAdmin || p.can_create_account || p.can_sync_social;
+    return true;
+  });
 
   return (
     <>

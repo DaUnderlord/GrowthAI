@@ -1,4 +1,6 @@
 import { readJsonResponse } from './httpJson';
+import { authFetch } from './authFetch';
+
 export type AiApiResult<T> = {
   ok: boolean;
   data?: T;
@@ -12,9 +14,8 @@ export async function callGrowthAi<T = any>(
   body: Record<string, unknown>
 ): Promise<AiApiResult<T>> {
   try {
-    const res = await fetch(path, {
+    const res = await authFetch(path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const parsed = await readJsonResponse<any>(res);

@@ -1,8 +1,28 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 const MAX_PROMPT_CHARS = 24_000;
-const DEFAULT_TIMEOUT_MS = 45_000;
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const DEFAULT_TIMEOUT_MS = 55_000;
+/** gemini-2.5-flash is blocked for new API keys; prefer 3.x Flash. */
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+
+function isLegacyGemini25(model: string): boolean {
+  return /^gemini-2\.[05]/i.test(model);
+}
+
+function modelCandidates(preferred?: string): string[] {
+  const ordered = [preferred, process.env.GEMINI_MODEL, ...FALLBACK_MODELS]
+    .map((m) => (m || '').trim())
+    .filter(Boolean)
+    .filter((m) => !isLegacyGemini25(m));
+  const unique = [...new Set(ordered)];
+  return unique.length ? unique : ['gemini-3.6-flash'];
+}
+
+function isUnavailableModelError(err: any): boolean {
+  const message = `${err?.message || ''} ${JSON.stringify(err?.error || err || '')}`;
+  return /404|NOT_FOUND|no longer available|not found for API version/i.test(message);
+}
 
 let aiClient: GoogleGenAI | null = null;
 let initError: string | null = null;
@@ -95,41 +115,74 @@ export async function generateGrowthAI(
     );
   }
 
-  const model = options?.model || DEFAULT_MODEL;
   const temperature = options?.temperature ?? 0.7;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const contents = truncate(prompt);
   const system = systemInstruction ? truncate(systemInstruction, 8_000) : undefined;
 
-  const run = async () => {
-    const response = await client.models.generateContent({
-      model,
-      contents,
-      config: system
-        ? { systemInstruction: system, temperature }
-        : { temperature },
-    });
-    const text = (response.text || '').trim();
-    if (!text) {
-      throw new AiServiceError('Gemini returned an empty response.', 502, 'ai_empty');
-    }
-    return text;
-  };
+  return generateGeminiContent({
+    client,
+    contents,
+    systemInstruction: system,
+    temperature,
+    timeoutMs,
+    model: options?.model,
+  });
+}
 
-  try {
-    return await withTimeout(run(), timeoutMs);
-  } catch (err: any) {
-    const message = String(err?.message || err);
-    // Single retry for transient failures
-    if (/timeout|429|503|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(message)) {
-      try {
-        return await withTimeout(run(), timeoutMs);
-      } catch (retryErr: any) {
-        throw normalizeAiError(retryErr);
+export async function generateGeminiContent(opts: {
+  client: GoogleGenAI;
+  contents: unknown;
+  systemInstruction?: string;
+  temperature?: number;
+  timeoutMs?: number;
+  model?: string;
+}): Promise<string> {
+  const temperature = opts.temperature ?? 0.7;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const models = modelCandidates(opts.model);
+  let lastErr: unknown;
+
+  for (const model of models) {
+    const run = async () => {
+      const response = await opts.client.models.generateContent({
+        model,
+        contents: opts.contents as any,
+        config: {
+          temperature,
+          ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+        },
+      });
+      const text = (response.text || '').trim();
+      if (!text) {
+        throw new AiServiceError('Gemini returned an empty response.', 502, 'ai_empty');
       }
+      return text;
+    };
+
+    try {
+      return await withTimeout(run(), timeoutMs);
+    } catch (err: any) {
+      lastErr = err;
+      if (isUnavailableModelError(err)) {
+        console.warn(`[AI] model ${model} unavailable, trying fallback`);
+        continue;
+      }
+      const message = String(err?.message || err);
+      if (/timeout|429|503|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(message)) {
+        try {
+          return await withTimeout(run(), timeoutMs);
+        } catch (retryErr: any) {
+          lastErr = retryErr;
+          throw normalizeAiError(retryErr);
+        }
+      }
+      throw normalizeAiError(err);
     }
-    throw normalizeAiError(err);
   }
+
+  throw normalizeAiError(lastErr);
 }
 
 function normalizeAiError(err: any): AiServiceError {
@@ -143,6 +196,13 @@ function normalizeAiError(err: any): AiServiceError {
   }
   if (/timeout/i.test(message)) {
     return new AiServiceError(message, 504, 'ai_timeout');
+  }
+  if (/404|NOT_FOUND|no longer available/i.test(message)) {
+    return new AiServiceError(
+      'Gemini model is unavailable. Set GEMINI_MODEL to gemini-3.6-flash (or another current Flash model).',
+      502,
+      'ai_model'
+    );
   }
   return new AiServiceError(message, 500, 'ai_error');
 }

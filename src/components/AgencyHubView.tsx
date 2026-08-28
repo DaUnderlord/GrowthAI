@@ -22,7 +22,7 @@ interface AgencyHubProps {
   onAddClient: (newClient: ClientProfile) => void;
   whiteLabelMode: boolean;
   setWhiteLabelMode: (val: boolean) => void;
-  selectedClient: ClientProfile;
+  selectedClient: ClientProfile | null;
   currentUser?: UserProfile;
   onUpdateClientPlatforms?: (clientId: string, platforms: ConnectedPlatform[]) => void;
 }
@@ -50,14 +50,16 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
   const [onboardTiktokHandle, setOnboardTiktokHandle] = useState('');
   const [onboardFbPage, setOnboardFbPage] = useState('');
 
+  const initialFollowersForHandle = (_handle: string) => 0;
+
   const handleCreateClient = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClientName) return;
 
     const initialPlatforms: ConnectedPlatform[] = [
-      { id: 'instagram', name: 'Instagram', icon: 'Instagram', connected: Boolean(onboardIgHandle), accountName: onboardIgHandle ? (onboardIgHandle.startsWith('@') ? onboardIgHandle : `@${onboardIgHandle}`) : `@${newClientName.toLowerCase().replace(/\s+/g, '')}`, followers: 25000, growthRate: 12.5, lastSync: 'Just now', healthScore: 92 },
-      { id: 'facebook', name: 'Facebook', icon: 'Facebook', connected: Boolean(onboardFbPage), accountName: onboardFbPage || `${newClientName} Page`, followers: 18000, growthRate: 5.2, lastSync: 'Just now', healthScore: 88 },
-      { id: 'tiktok', name: 'TikTok', icon: 'Video', connected: Boolean(onboardTiktokHandle), accountName: onboardTiktokHandle ? (onboardTiktokHandle.startsWith('@') ? onboardTiktokHandle : `@${onboardTiktokHandle}`) : `@${newClientName.toLowerCase().replace(/\s+/g, '')}_tiktok`, followers: 45000, growthRate: 28.0, lastSync: 'Just now', healthScore: 95 },
+      { id: 'instagram', name: 'Instagram', icon: 'Instagram', connected: Boolean(onboardIgHandle), accountName: onboardIgHandle ? (onboardIgHandle.startsWith('@') ? onboardIgHandle : `@${onboardIgHandle}`) : `@${newClientName.toLowerCase().replace(/\s+/g, '')}`, followers: onboardIgHandle ? initialFollowersForHandle(onboardIgHandle) : 0, growthRate: 0, lastSync: onboardIgHandle ? 'Pending sync' : 'Not connected', healthScore: onboardIgHandle ? 80 : 0 },
+      { id: 'facebook', name: 'Facebook', icon: 'Facebook', connected: Boolean(onboardFbPage), accountName: onboardFbPage || `${newClientName} Page`, followers: onboardFbPage ? initialFollowersForHandle(onboardFbPage) : 0, growthRate: 0, lastSync: onboardFbPage ? 'Pending sync' : 'Not connected', healthScore: onboardFbPage ? 80 : 0 },
+      { id: 'tiktok', name: 'TikTok', icon: 'Video', connected: Boolean(onboardTiktokHandle), accountName: onboardTiktokHandle ? (onboardTiktokHandle.startsWith('@') ? onboardTiktokHandle : `@${onboardTiktokHandle}`) : `@${newClientName.toLowerCase().replace(/\s+/g, '')}_tiktok`, followers: onboardTiktokHandle ? initialFollowersForHandle(onboardTiktokHandle) : 0, growthRate: 0, lastSync: onboardTiktokHandle ? 'Pending sync' : 'Not connected', healthScore: onboardTiktokHandle ? 80 : 0 },
     ];
 
     const newClientObj: ClientProfile = {
@@ -178,7 +180,7 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
       )}
 
       {/* Tab: Social Accounts Connection */}
-      {activeTab === 'socials' && (
+      {activeTab === 'socials' && selectedClient && (
         <SocialAccountsView
           client={selectedClient}
           currentUser={currentUser}
@@ -188,6 +190,11 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
             }
           }}
         />
+      )}
+      {activeTab === 'socials' && !selectedClient && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-sm text-slate-400">
+          Add a brand in this hub first, then connect social accounts.
+        </div>
       )}
 
       {/* Tab 2: White Label Branding */}

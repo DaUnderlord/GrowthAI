@@ -10,3 +10,4 @@ coverage/
 .vscode/
 *.local
 supabase/.temp/
+firebase-applet-config.json

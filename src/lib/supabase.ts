@@ -228,7 +228,7 @@ type CalendarRow = {
 function mapProfile(row: ProfileRow): UserProfile {
   return {
     id: row.id,
-    name: row.name,
+    name: row.name || 'Member',
     email: row.email,
     role: row.role,
     avatar: row.avatar,
@@ -246,7 +246,7 @@ function mapProfile(row: ProfileRow): UserProfile {
 function mapClient(row: ClientRow): ClientProfile {
   return {
     id: row.id,
-    name: row.name,
+    name: row.name || 'Untitled brand',
     industry: row.industry,
     industryLabel: row.industry_label,
     logo: row.logo,
@@ -474,6 +474,33 @@ async function ensureProfileFromAuthUser(
   return mapProfile(data as ProfileRow);
 }
 
+async function ensureWorkspaceForProfile(
+  profile: UserProfile,
+  options?: { industry?: string; goals?: string[] }
+): Promise<UserProfile> {
+  if (profile.orgId) return profile;
+
+  const orgId = await createOrganizationForUser(
+    profile.id,
+    profile.companyName || `${profile.name}'s Agency`
+  );
+  if (!orgId) return profile;
+
+  const { count } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId);
+  if ((count ?? 0) === 0) {
+    await createStarterClientForOrg(orgId, {
+      name: profile.companyName?.trim() || `${profile.name.split(' ')[0]}'s Brand`,
+      industry: options?.industry,
+      primaryGoal: goalTextFromWizard(options?.goals),
+    });
+  }
+
+  return (await fetchProfile(profile.id)) || { ...profile, orgId };
+}
+
 // --- AUTH ---
 
 export async function registerUser(
@@ -508,9 +535,8 @@ export async function registerUser(
         full_name: fullName,
         phone,
         company_name: companyName,
-        role,
         avatar,
-        privileges: getDefaultPrivileges(role),
+        privileges: getDefaultPrivileges('admin'),
       },
     },
   }));
@@ -531,30 +557,15 @@ export async function registerUser(
     name: fullName,
     phone,
     companyName,
-    role,
+    role: 'admin',
     avatar,
   });
 
   await acceptPendingInviteForEmail(email, profile.id);
-
-  const orgId = await createOrganizationForUser(profile.id, companyName || `${fullName}'s Agency`);
-
-  if (orgId) {
-    const { count } = await supabase
-      .from('clients')
-      .select('id', { count: 'exact', head: true })
-      .eq('org_id', orgId);
-    if ((count ?? 0) === 0) {
-      await createStarterClientForOrg(orgId, {
-        name: companyName.trim() || `${fullName.split(' ')[0]}'s Brand`,
-        industry: options?.industry,
-        primaryGoal: goalTextFromWizard(options?.goals),
-      });
-    }
-  }
-
-  const refreshed = await fetchProfile(profile.id);
-  const withOrg = refreshed || profile;
+  const withOrg = await ensureWorkspaceForProfile(
+    (await fetchProfile(profile.id)) || profile,
+    options
+  );
 
   const tourProfile = await saveWorkspacePreferences(withOrg.id, {
     preferences: {
@@ -582,7 +593,11 @@ export async function loginWithEmail(email: string, pass: string): Promise<UserP
   }
   if (error) throw new Error(error.message);
   if (!data.user) throw new Error('Login succeeded but no user was returned.');
-  return ensureProfileFromAuthUser(data.user);
+  if (data.user.email) {
+    await acceptPendingInviteForEmail(data.user.email, data.user.id);
+  }
+  const profile = await ensureProfileFromAuthUser(data.user);
+  return ensureWorkspaceForProfile(profile);
 }
 
 export async function loginWithGoogle(): Promise<UserProfile> {
@@ -621,7 +636,11 @@ export async function loginWithGoogle(): Promise<UserProfile> {
     throw new Error('Redirecting to Google sign-in…');
   }
 
-  return ensureProfileFromAuthUser(session.user, { role: 'super_admin' });
+  if (session.user.email) {
+    await acceptPendingInviteForEmail(session.user.email, session.user.id);
+  }
+  const profile = await ensureProfileFromAuthUser(session.user);
+  return ensureWorkspaceForProfile(profile);
 }
 
 export async function resetPasswordForEmail(email: string): Promise<void> {
@@ -760,7 +779,9 @@ export function subscribeToAuthState(
       if (session.user.email) {
         await acceptPendingInviteForEmail(session.user.email, session.user.id);
       }
-      const profile = await ensureProfileFromAuthUser(session.user);
+      const profile = await ensureWorkspaceForProfile(
+        await ensureProfileFromAuthUser(session.user)
+      );
       if (active) onUserChanged(profile);
     } catch (err) {
       console.warn('Error resolving auth profile:', err);
@@ -925,12 +946,16 @@ export function subscribeToClients(onUpdate: (clients: ClientProfile[]) => void)
       .eq('id', user.id)
       .maybeSingle();
 
-    let query = supabase.from('clients').select('*').order('name');
-    if (profile?.org_id) {
-      query = query.eq('org_id', profile.org_id);
+    if (!profile?.org_id) {
+      onUpdate([]);
+      return;
     }
 
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('org_id', profile.org_id)
+      .order('name');
     if (error) {
       console.warn('Error loading clients:', error.message);
       onUpdate([]);
@@ -957,7 +982,30 @@ export function subscribeToUsers(onUpdate: (users: UserProfile[]) => void): () =
   let channel: RealtimeChannel | null = null;
 
   const load = async () => {
-    const { data, error } = await supabase.from('profiles').select('*').order('name');
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      onUpdate([]);
+      return;
+    }
+
+    const { data: selfProfile } = await supabase
+      .from('profiles')
+      .select('org_id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!selfProfile?.org_id) {
+      onUpdate([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('org_id', selfProfile.org_id)
+      .order('name');
     if (error) {
       console.warn('Error loading profiles:', error.message);
       return;
@@ -982,10 +1030,14 @@ export function subscribeToUsers(onUpdate: (users: UserProfile[]) => void): () =
 }
 
 export async function saveClient(client: ClientProfile, orgId?: string | null) {
+  const resolvedOrgId = orgId ?? null;
+  if (!resolvedOrgId) {
+    throw new Error('Cannot save client without an organization. Complete onboarding first.');
+  }
   const { error } = await supabase
     .from('clients')
-    .upsert(clientToRow(client, orgId), { onConflict: 'id' });
-  if (error) console.error('Failed to save client:', error.message);
+    .upsert(clientToRow(client, resolvedOrgId), { onConflict: 'id' });
+  if (error) throw new Error(error.message);
 }
 
 export async function saveUser(user: UserProfile) {
@@ -1006,7 +1058,7 @@ export async function saveUser(user: UserProfile) {
     },
     { onConflict: 'id' }
   );
-  if (error) console.error('Failed to save user profile:', error.message);
+  if (error) throw new Error(error.message);
 }
 
 export function subscribeToCampaigns(

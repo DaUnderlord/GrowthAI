@@ -1,10 +1,8 @@
+import "./server/loadEnv";
 import path from "path";
 import express from "express";
-import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { createApp } from "./server/app";
-
-dotenv.config();
 
 const PORT = Number(process.env.PORT) || 3000;
 const app = createApp();

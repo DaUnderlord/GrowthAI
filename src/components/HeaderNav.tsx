@@ -66,7 +66,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                   />
                 ) : (
                   <span className="flex h-5 w-5 items-center justify-center rounded-md bg-indigo-500/20 text-[10px] font-bold text-indigo-200">
-                    {selectedClient.name.charAt(0).toUpperCase()}
+                    {selectedClient.name?.charAt(0).toUpperCase() || '?'}
                   </span>
                 )}
                 <span className="hidden max-w-[160px] truncate sm:inline">{selectedClient.name}</span>
@@ -103,7 +103,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                             />
                           ) : (
                             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-indigo-500/20 text-[10px] font-bold text-indigo-200">
-                              {c.name.charAt(0).toUpperCase()}
+                              {c.name?.charAt(0).toUpperCase() || '?'}
                             </span>
                           )}
                           <div className="min-w-0 flex-1">

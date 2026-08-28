@@ -48,6 +48,7 @@ export const TeamPrivilegesModal: React.FC<TeamPrivilegesModalProps> = ({
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   if (!isOpen && !asPage) return null;
+  if (!currentUser) return null;
 
   const activeInspectedUser = users.find((u) => u.id === selectedUserId) || currentUser;
   const isAdmin = currentUser.role === 'admin' || currentUser.role === 'super_admin';
@@ -65,11 +66,12 @@ export const TeamPrivilegesModal: React.FC<TeamPrivilegesModalProps> = ({
 
     const updated = users.map((u) => {
       if (u.id === userId) {
+        const privileges = u.privileges || {};
         return {
           ...u,
           privileges: {
-            ...u.privileges,
-            [privKey]: !u.privileges[privKey],
+            ...privileges,
+            [privKey]: !privileges[privKey],
           },
         };
       }
@@ -77,7 +79,7 @@ export const TeamPrivilegesModal: React.FC<TeamPrivilegesModalProps> = ({
     });
 
     onUpdateUsers(updated);
-    showToast(`Privilege updated for ${activeInspectedUser.name}`);
+    showToast(`Privilege updated for ${activeInspectedUser?.name || 'user'}`);
   };
 
   const handleDeleteTeamMember = async (targetUserId: string, targetName: string) => {
@@ -340,7 +342,7 @@ export const TeamPrivilegesModal: React.FC<TeamPrivilegesModalProps> = ({
                   Assigned Privilege Checkboxes
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Editing access permissions for <span className="text-cyan-300 font-bold">{activeInspectedUser.name}</span>
+                  Editing access permissions for <span className="text-cyan-300 font-bold">{activeInspectedUser?.name || 'user'}</span>
                 </p>
               </div>
 
@@ -353,7 +355,7 @@ export const TeamPrivilegesModal: React.FC<TeamPrivilegesModalProps> = ({
 
             <div className="space-y-3">
               {privilegeDefinitions.map((priv) => {
-                const isChecked = Boolean(activeInspectedUser.privileges[priv.key]);
+                const isChecked = Boolean(activeInspectedUser?.privileges?.[priv.key]);
 
                 return (
                   <div

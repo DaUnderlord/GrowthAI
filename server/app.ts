@@ -1,9 +1,10 @@
+import "./loadEnv";
 import express, { type Express } from "express";
-import dotenv from "dotenv";
 import { registerMetaWebhookRoutes } from "./meta/webhook";
-import { registerWhatsAppStaffRoutes } from "./meta/staffRoutes";
+import { registerWhatsAppStaffRoutes, requireSupabaseUser } from "./meta/staffRoutes";
 import {
   AiServiceError,
+  generateGeminiContent,
   generateGrowthAI,
   getAiClient,
   getAiStatus,
@@ -11,8 +12,6 @@ import {
   sendAiError,
 } from "./ai/gemini";
 import { getAppUrl } from "./appUrl";
-
-dotenv.config();
 
 export function createApp(): Express {
   getAiClient();
@@ -59,7 +58,9 @@ export function createApp(): Express {
   registerMetaWebhookRoutes(app, generateGrowthAI);
   registerWhatsAppStaffRoutes(app, generateGrowthAI);
 
-  app.post("/api/growth/multi-agent", async (req, res) => {
+  const growthAi = [requireSupabaseUser];
+
+  app.post("/api/growth/multi-agent", ...growthAi, async (req, res) => {
     try {
       const { clientName, industry, targetGoal, inputPrompt } = req.body;
 
@@ -85,7 +86,7 @@ Provide a structured collaborative breakdown where each relevant agent provides 
     }
   });
 
-  app.post("/api/growth/predict", async (req, res) => {
+  app.post("/api/growth/predict", ...growthAi, async (req, res) => {
     try {
       const { platform, contentType, hookText, targetAudience, industry } = req.body || {};
       if (!String(hookText || '').trim()) {
@@ -133,7 +134,7 @@ Return ONLY valid raw JSON without markdown codeblock formatting if possible or 
     }
   });
 
-  app.post("/api/growth/optimize-content", async (req, res) => {
+  app.post("/api/growth/optimize-content", ...growthAi, async (req, res) => {
     try {
       const { topic, channel, goal, audience } = req.body || {};
       if (!String(topic || '').trim()) {
@@ -153,7 +154,7 @@ Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure
     }
   });
 
-  app.post("/api/growth/competitor-scan", async (req, res) => {
+  app.post("/api/growth/competitor-scan", ...growthAi, async (req, res) => {
     try {
       const { competitorName, industry, channel } = req.body || {};
       if (!String(competitorName || '').trim()) {
@@ -173,7 +174,7 @@ Analyze competitor positioning, identify content theme gaps, engagement triggers
     }
   });
 
-  app.post("/api/growth/analyze-calendar", async (req, res) => {
+  app.post("/api/growth/analyze-calendar", ...growthAi, async (req, res) => {
     try {
       const { calendarData, campaignGoal, clientName } = req.body;
 
@@ -198,7 +199,7 @@ Respond in structured Markdown.`;
     }
   });
 
-  app.post("/api/growth/generate-campaign-funnel", async (req, res) => {
+  app.post("/api/growth/generate-campaign-funnel", ...growthAi, async (req, res) => {
     try {
       const { campaignName, primaryGoal, targetAudience, budget } = req.body;
 
@@ -222,39 +223,30 @@ Respond in structured Markdown.`;
     }
   });
 
-  app.post("/api/socials/sync-live", async (req, res) => {
+  app.post("/api/socials/sync-live", requireSupabaseUser, async (req, res) => {
     try {
-      const { platform, accountHandle, accessToken } = req.body;
-
+      const { platform, accountHandle, followers, growthRate, accessToken } = req.body;
       const pingMs = Math.floor(Math.random() * 25) + 15;
-      const nowISO = new Date().toISOString();
-
-      const mockLiveStats: Record<string, any> = {
-        instagram: { followers: 28450, growthRate: 14.2, activeLiveSessions: 3, impressions24h: 182000, apiStatus: 'live', rateLimitQuota: '9,420 / 10,000' },
-        facebook: { followers: 19800, growthRate: 6.8, activeLiveSessions: 1, impressions24h: 94000, apiStatus: 'live', rateLimitQuota: '8,800 / 10,000' },
-        youtube: { followers: 64200, growthRate: 22.5, activeLiveSessions: 12, impressions24h: 512000, apiStatus: 'live', rateLimitQuota: '4,900 / 10,000' },
-        linkedin: { followers: 12300, growthRate: 18.1, activeLiveSessions: 2, impressions24h: 48000, apiStatus: 'live', rateLimitQuota: '9,910 / 10,000' },
-        tiktok: { followers: 89000, growthRate: 34.0, activeLiveSessions: 18, impressions24h: 1240000, apiStatus: 'live', rateLimitQuota: '7,100 / 10,000' },
-        google_analytics: { followers: 142000, growthRate: 21.0, activeLiveSessions: 42, impressions24h: 320000, apiStatus: 'live', rateLimitQuota: '9,990 / 10,000' },
-      };
-
-      const stats = mockLiveStats[platform] || {
-        followers: 25000,
-        growthRate: 12.0,
-        activeLiveSessions: 5,
-        impressions24h: 150000,
-        apiStatus: 'live',
-        rateLimitQuota: '9,500 / 10,000',
-      };
+      const baseFollowers = Math.max(0, Number(followers) || 0);
+      const growth = Number(growthRate) || 0;
 
       res.json({
         success: true,
         platform,
         accountHandle,
         livePingMs: pingMs,
-        timestamp: nowISO,
-        stats,
-        oauthTokenMasked: accessToken ? `${accessToken.substring(0, 6)}...${accessToken.slice(-4)}` : "eAAK8x9...2a91",
+        timestamp: new Date().toISOString(),
+        stats: {
+          followers: baseFollowers,
+          growthRate: growth,
+          activeLiveSessions: baseFollowers > 5000 ? 1 : 0,
+          impressions24h: Math.round(baseFollowers * 3.8),
+          apiStatus: accessToken ? 'live' : 'syncing',
+          rateLimitQuota: 'within limits',
+        },
+        oauthTokenMasked: accessToken
+          ? `${String(accessToken).substring(0, 6)}...${String(accessToken).slice(-4)}`
+          : undefined,
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "Failed to sync live platform data" });
@@ -323,39 +315,39 @@ Respond in structured Markdown.`;
     });
   });
 
-  app.post("/api/auth/:platform/exchange-token", async (req, res) => {
+  app.post("/api/auth/:platform/exchange-token", requireSupabaseUser, async (req, res) => {
     try {
       const { platform } = req.params;
-      const { code, accessToken, accountHandle } = req.body;
+      const { accessToken, accountHandle, initialFollowers, growthRate } = req.body;
+
+      if (!accessToken && !accountHandle) {
+        res.status(400).json({
+          success: false,
+          error: 'Provide an account handle or access token to connect this channel.',
+        });
+        return;
+      }
 
       const masked = accessToken
         ? `${accessToken.substring(0, 6)}...${accessToken.slice(-4)}`
-        : `oauth_live_tok_${Math.random().toString(36).substring(2, 10)}`;
+        : `manual_${platform}_${Date.now().toString(36).slice(-6)}`;
 
-      const handle = accountHandle || `@${platform}_brand_official`;
-
-      const platformDefaults: Record<string, any> = {
-        instagram: { name: 'Instagram Business', followers: 32400, growthRate: 16.8, healthScore: 98, accountName: handle },
-        facebook: { name: 'Facebook Page', followers: 21500, growthRate: 8.2, healthScore: 95, accountName: handle },
-        youtube: { name: 'YouTube Channel', followers: 74100, growthRate: 24.1, healthScore: 99, accountName: handle },
-        linkedin: { name: 'LinkedIn Company', followers: 14800, growthRate: 19.5, healthScore: 97, accountName: handle },
-        tiktok: { name: 'TikTok Creator', followers: 96200, growthRate: 38.4, healthScore: 99, accountName: handle },
-        google_analytics: { name: 'Google Analytics 4', followers: 168000, growthRate: 23.0, healthScore: 100, accountName: handle },
-      };
-
-      const details = platformDefaults[platform] || { name: platform, followers: 20000, growthRate: 15.0, healthScore: 95, accountName: handle };
+      const handle = accountHandle || `@${platform}_brand`;
+      const followers = Math.max(0, Number(initialFollowers) || 0);
+      const growth = Math.max(0, Number(growthRate) || 0);
+      const healthScore = accessToken ? 96 : followers > 0 ? 88 : 72;
 
       res.json({
         success: true,
         platform,
         connected: true,
-        accountName: details.accountName,
-        followers: details.followers,
-        growthRate: details.growthRate,
-        healthScore: details.healthScore,
+        accountName: handle,
+        followers,
+        growthRate: growth,
+        healthScore,
         oauthTokenMasked: masked,
-        apiStatus: 'live',
-        lastSync: 'Just now (OAuth Verified)',
+        apiStatus: accessToken ? 'live' : 'syncing',
+        lastSync: new Date().toISOString(),
         livePingMs: Math.floor(Math.random() * 20) + 12,
       });
     } catch (err: any) {
@@ -366,6 +358,7 @@ Respond in structured Markdown.`;
   app.get(["/auth/consent", "/auth/consent/"], (req, res) => {
     const platform = (req.query.platform as string) || 'instagram';
     const handle = (req.query.handle as string) || `@${platform}_official`;
+    const appOrigin = getAppUrl().replace(/\/$/, '');
 
     const platformTitles: Record<string, { title: string; iconBg: string }> = {
       instagram: { title: 'Meta & Instagram Business Graph API', iconBg: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)' },
@@ -453,7 +446,7 @@ Respond in structured Markdown.`;
                   code: 'live_oauth_token_' + Math.random().toString(36).substring(2, 9),
                   accountHandle: hInput,
                   timestamp: new Date().toISOString()
-                }, '*');
+                }, ${JSON.stringify(appOrigin)});
                 window.close();
               } else {
                 window.location.href = '/auth/callback?state=platform_' + ${JSON.stringify(platform)};
@@ -469,6 +462,7 @@ Respond in structured Markdown.`;
   app.get(["/auth/callback", "/auth/callback/"], (req, res) => {
     const { code, state } = req.query;
     const platformMatch = typeof state === 'string' ? state.split('_')[1] : 'social';
+    const appOrigin = getAppUrl().replace(/\/$/, '');
 
     res.send(`
     <!DOCTYPE html>
@@ -496,7 +490,7 @@ Respond in structured Markdown.`;
               platform: ${JSON.stringify(platformMatch)},
               code: ${JSON.stringify(code || 'live_oauth_code_verified')},
               timestamp: new Date().toISOString()
-            }, '*');
+            }, ${JSON.stringify(appOrigin)});
             setTimeout(() => window.close(), 1000);
           } else {
             setTimeout(() => { window.location.href = '/?oauth_connected=true'; }, 1500);
@@ -507,7 +501,7 @@ Respond in structured Markdown.`;
   `);
   });
 
-  app.post("/api/growth/analyze-creative-multimodal", async (req, res) => {
+  app.post("/api/growth/analyze-creative-multimodal", ...growthAi, async (req, res) => {
     try {
       const { visualAssetUrl, visualAssetType, calendarTopic, hookText, captionText, campaignGoal, platform, contentType } = req.body;
 
@@ -577,20 +571,12 @@ Asset Type: ${visualAssetType || 'image'}
         };
       }
 
-      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-      const response = await aiClient.models.generateContent({
-        model,
+      const resultText = await generateGeminiContent({
+        client: aiClient,
         contents: contentsPayload,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.4,
-        }
+        systemInstruction: systemPrompt,
+        temperature: 0.4,
       });
-
-      const resultText = response.text || "";
-      if (!resultText.trim()) {
-        throw new AiServiceError('Gemini returned an empty multimodal response.', 502, 'ai_empty');
-      }
       const parsed: any = parseJsonFromModel(resultText, {
         visualScore: 85,
         campaignGoalMatchPct: 90,

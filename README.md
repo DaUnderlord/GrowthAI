@@ -31,7 +31,7 @@ Open http://localhost:3000
 | `SUPABASE_URL` | Runtime | Yes (WhatsApp/server) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Runtime | Yes (WhatsApp/server) |
 | `APP_URL` | Runtime | Optional (auto from Vercel URL) |
-| `GEMINI_MODEL` | Runtime | Optional (`gemini-2.5-flash`) |
+| `GEMINI_MODEL` | Runtime | Optional (`gemini-3.6-flash`) |
 | `META_*`, `WHATSAPP_*` | Runtime | Optional (WhatsApp module) |
 
 5. In **Supabase Dashboard → Authentication → URL Configuration**, add your Vercel deployment URL(s) to **Site URL** and **Redirect URLs**.
@@ -50,7 +50,16 @@ Open http://localhost:3000
 
 ## Supabase migrations
 
-Apply SQL files in `supabase/migrations/` via Supabase SQL Editor or CLI before using WhatsApp CRM features.
+Apply SQL files in `supabase/migrations/` in order (SQL Editor, CLI, or Supabase MCP `apply_migration`):
+
+1. `20260810130000_growthos_schema.sql` — core tables
+2. `20260810150000_calendar_team_sharing.sql` — calendar briefs
+3. `20260820150000_whatsapp_sales_crm.sql` — WhatsApp / CRM
+4. `20260827180000_production_hardening.sql` — org-scoped RLS, team invites, missing columns
+
+Also enable **Leaked password protection** in Supabase Dashboard → Authentication → Attack Protection.
+
+After deploy, add your Vercel URL to **Authentication → URL Configuration**.
 
 ## Scripts
 

@@ -174,7 +174,11 @@ export default function App() {
       if (!prev) return next[0] || null;
       return next.find((c) => c.id === prev.id) || next[0] || null;
     });
-    await Promise.all(next.map((c) => saveClient(c)));
+    const orgId = currentUser?.orgId;
+    if (!orgId) {
+      throw new Error('Your profile is missing an organization. Reload and complete sign-in again.');
+    }
+    await Promise.all(next.map((c) => saveClient(c, orgId)));
   };
 
   const handleLogout = async () => {
@@ -247,11 +251,29 @@ export default function App() {
   }
 
   if (!splashDone) {
-    return <SplashScreen ready={authReady || bootstrapped} onFinished={handleSplashFinished} />;
+    return (
+      <SplashScreen
+        ready={authReady || bootstrapped}
+        onFinished={handleSplashFinished}
+      />
+    );
   }
 
   const activeUser = currentUser;
   const activeClient = selectedClient;
+  const isAdminUser =
+    activeUser?.role === 'admin' || activeUser?.role === 'super_admin';
+  const can = (key: keyof NonNullable<UserProfile['privileges']>) =>
+    Boolean(isAdminUser || activeUser?.privileges?.[key]);
+
+  const accessDenied = (label: string) => (
+    <div className="fade-rise mx-auto max-w-lg rounded-2xl border border-white/10 bg-[#0a1018] p-8 text-center">
+      <h2 className="font-display text-2xl text-white">Access restricted</h2>
+      <p className="mt-2 text-sm text-slate-400">
+        Your role does not include {label}. Ask an admin to update privileges in Team.
+      </p>
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-transparent text-slate-100 font-sans">
@@ -318,7 +340,11 @@ export default function App() {
               <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-400">
                 Loading workspace data…
               </div>
-            ) : !activeClient ? (
+            ) : !activeClient &&
+              activeView !== 'agency' &&
+              activeView !== 'settings' &&
+              activeView !== 'team' &&
+              activeView !== 'invoices' ? (
               <div className="fade-rise flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center">
                 <h2 className="font-display text-2xl font-medium text-white">Create your first brand</h2>
                 <p className="max-w-md text-sm text-slate-400">
@@ -339,14 +365,22 @@ export default function App() {
                     onNavigateTab={(tab) => setActiveView(tab)}
                   />
                 )}
-                {activeView === 'campaigns' && <CampaignManagerView client={activeClient} />}
-                {activeView === 'calendar' && (
+                {activeView === 'campaigns' &&
+                  (can('can_manage_campaigns') ? (
+                    <CampaignManagerView client={activeClient} />
+                  ) : (
+                    accessDenied('campaign management')
+                  ))}
+                {activeView === 'calendar' &&
+                  (can('can_manage_calendar') ? (
                   <ContentCalendarView
                     client={activeClient}
                     users={users.length ? users : activeUser ? [activeUser] : []}
                     currentUser={activeUser}
                   />
-                )}
+                  ) : (
+                    accessDenied('calendar management')
+                  ))}
                 {activeView === 'whatsapp' && (
                   <WhatsAppInboxView
                     client={activeClient}
@@ -357,7 +391,8 @@ export default function App() {
                 {activeView === 'intelligence' && <GrowthIntelligenceView client={activeClient} />}
                 {activeView === 'audience' && <AudienceDnaView client={activeClient} />}
                 {activeView === 'attribution' && <ConversionAttributionView client={activeClient} />}
-                {activeView === 'agency' && (
+                {activeView === 'agency' &&
+                  (can('can_create_account') || can('can_sync_social') ? (
                   <AgencyHubView
                     clients={clients}
                     selectedClient={activeClient}
@@ -376,7 +411,9 @@ export default function App() {
                       await persistClients(next);
                     }}
                   />
-                )}
+                  ) : (
+                    accessDenied('agency hub')
+                  ))}
                 {activeView === 'invoices' && (
                   <InvoiceManagementView
                     clients={clients}
@@ -406,7 +443,8 @@ export default function App() {
                     }}
                   />
                 )}
-                {activeView === 'team' && (
+                {activeView === 'team' &&
+                  (can('can_add_team') ? (
                   <TeamPrivilegesModal
                     isOpen
                     asPage
@@ -425,13 +463,16 @@ export default function App() {
                       setUsers((prev) => prev.filter((u) => u.id !== userId));
                     }}
                   />
-                )}
+                  ) : (
+                    accessDenied('team management')
+                  ))}
               </>
             )}
           </div>
         </main>
       </div>
 
+      {activeUser && (
       <UserProfileModal
         isOpen={isProfileModalOpen && isAuthenticated}
         onClose={() => setIsProfileModalOpen(false)}
@@ -443,12 +484,14 @@ export default function App() {
         }}
         onLogout={handleLogout}
       />
+      )}
 
+      {activeUser && (
       <TeamPrivilegesModal
         isOpen={isPrivilegesModalOpen && isAuthenticated}
         onClose={() => setIsPrivilegesModalOpen(false)}
-        users={users.length ? users : activeUser ? [activeUser] : []}
-        currentUser={activeUser!}
+        users={users.length ? users : [activeUser]}
+        currentUser={activeUser}
         onUpdateUsers={(updatedUsers) => {
           setUsers(updatedUsers);
           const updatedSelf = updatedUsers.find((u) => u.id === activeUser.id);
@@ -461,6 +504,7 @@ export default function App() {
           setUsers((prev) => prev.filter((u) => u.id !== userId));
         }}
       />
+      )}
 
       {isAuthModalOpen && (
         <AuthOnboardingModal

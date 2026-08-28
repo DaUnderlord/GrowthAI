@@ -64,7 +64,7 @@ export const CalendarBriefView: React.FC<CalendarBriefViewProps> = ({ token }) =
         <header className="space-y-3 border-b border-white/10 pb-6">
           <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300/80">GrowthOS · Shared brief</p>
           <div className="flex items-start gap-4">
-            {payload.client.logo ? (
+            {payload.client?.logo ? (
               <img
                 src={payload.client.logo}
                 alt=""
@@ -72,9 +72,11 @@ export const CalendarBriefView: React.FC<CalendarBriefViewProps> = ({ token }) =
               />
             ) : null}
             <div>
-              <h1 className="font-display text-3xl font-medium text-white">{payload.client.name}</h1>
-              <p className="mt-1 text-sm text-slate-400">{payload.share.label}</p>
-              {payload.client.primaryGoal && (
+              <h1 className="font-display text-3xl font-medium text-white">
+                {payload.client?.name || 'Shared calendar'}
+              </h1>
+              <p className="mt-1 text-sm text-slate-400">{payload.share?.label}</p>
+              {payload.client?.primaryGoal && (
                 <p className="mt-2 text-sm text-slate-300">Goal: {payload.client.primaryGoal}</p>
               )}
             </div>

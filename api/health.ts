@@ -11,7 +11,7 @@ export default function handler(_req: VercelRequest, res: VercelResponse) {
     hasApiKey: hasGemini,
     ai: {
       configured: hasGemini,
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     },
     supabaseConfigured: Boolean(supabaseUrl && supabaseAnonKey),
     hasWhatsAppConfig: Boolean(
