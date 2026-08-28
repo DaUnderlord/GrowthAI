@@ -13,8 +13,6 @@ interface SidebarNavProps {
   onOpenProfileView: () => void;
   onOpenProfileEdit: () => void;
   onOpenPrivilegesModal: () => void;
-  mode: 'platform' | 'blueprint';
-  setMode: (mode: 'platform' | 'blueprint') => void;
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
   mobileOpen: boolean;

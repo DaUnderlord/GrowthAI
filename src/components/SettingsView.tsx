@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
 import {
-  Bell,
   Building2,
   CheckCircle2,
-  Cpu,
   DollarSign,
-  FileText,
-  Key,
-  Layers,
   Lock,
   ShieldCheck,
-  Sliders,
-  Sparkles,
   Zap,
 } from 'lucide-react';
 import { CurrencyCode, UserProfile } from '../types';
@@ -24,8 +17,6 @@ interface SettingsViewProps {
   setCurrency: (currency: CurrencyCode) => void;
   whiteLabelMode: boolean;
   setWhiteLabelMode: (val: boolean) => void;
-  mode: 'platform' | 'blueprint';
-  setMode: (mode: 'platform' | 'blueprint') => void;
   onUserUpdated?: (user: UserProfile) => void;
 }
 
@@ -35,31 +26,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setCurrency,
   whiteLabelMode,
   setWhiteLabelMode,
-  mode,
-  setMode,
   onUserUpdated,
 }) => {
   const prefs = currentUser.preferences || {};
-  const [activeTab, setActiveTab] = useState<'general' | 'preferences' | 'security' | 'system'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'preferences' | 'security'>('general');
   const [companyName, setCompanyName] = useState(currentUser.companyName || 'GrowthOS Agency');
   const [website, setWebsite] = useState(currentUser.website || prefs.website || 'https://growthos.ai');
-  const [emailAlerts, setEmailAlerts] = useState(prefs.emailAlerts ?? true);
-  const [weeklyDigest, setWeeklyDigest] = useState(prefs.weeklyDigest ?? true);
   const [language, setLanguage] = useState(prefs.language || 'English (US)');
   const [timeZone, setTimeZone] = useState(prefs.timeZone || 'UTC+0 (WAT / London)');
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(prefs.twoFactorEnabled ?? false);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
-  const [aiAutopilot, setAiAutopilot] = useState(prefs.aiAutopilot ?? true);
   const [savedNotice, setSavedNotice] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
-  const isSuperAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
 
   const tabs = [
     { id: 'general' as const, label: 'General', icon: Building2 },
     { id: 'preferences' as const, label: 'Preferences', icon: DollarSign },
     { id: 'security' as const, label: 'Security', icon: Lock },
-    ...(isSuperAdmin ? [{ id: 'system' as const, label: 'System', icon: Cpu }] : []),
   ];
 
   const handleSaveSettings = async () => {
@@ -70,12 +52,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         website,
         preferences: {
           website,
-          emailAlerts,
-          weeklyDigest,
           language,
           timeZone,
-          twoFactorEnabled,
-          aiAutopilot,
           currency,
           whiteLabelMode,
         },
@@ -96,7 +74,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <p className="eyebrow-label">Settings</p>
             <h2 className="mt-1 text-2xl font-semibold text-white">Workspace preferences</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">
-              Keep settings simple: brand, currency, security, and a few admin controls when needed.
+              Keep settings simple: brand, currency, and account security.
             </p>
           </div>
           <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto">
@@ -161,7 +139,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                 <div>
                   <p className="font-medium text-white">White-label mode</p>
-                  <p className="mt-1 text-[11px] text-slate-400">Show AgencyPulse AI branding instead of GrowthOS</p>
+                  <p className="mt-1 text-[11px] text-slate-400">Show AgencyPulse branding instead of GrowthOS</p>
                 </div>
                 <button
                   onClick={() => setWhiteLabelMode(!whiteLabelMode)}
@@ -176,45 +154,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   />
                 </button>
               </div>
-            </div>
-          </div>
-
-          <div className="surface-panel space-y-4 p-5">
-            <div className="flex items-center gap-2 border-b border-white/10 pb-3">
-              <Bell className="h-4 w-4 text-cyan-300" />
-              <h3 className="text-sm font-semibold text-white">Notifications</h3>
-            </div>
-            <div className="space-y-3 text-xs">
-              {[
-                {
-                  title: 'Email alerts',
-                  helper: 'Get notified when campaigns hit key milestones',
-                  value: emailAlerts,
-                  onChange: setEmailAlerts,
-                },
-                {
-                  title: 'Weekly digest',
-                  helper: 'A Monday summary of performance and next actions',
-                  value: weeklyDigest,
-                  onChange: setWeeklyDigest,
-                },
-              ].map((item) => (
-                <label
-                  key={item.title}
-                  className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                >
-                  <div>
-                    <p className="font-medium text-white">{item.title}</p>
-                    <p className="mt-1 text-[11px] text-slate-400">{item.helper}</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={item.value}
-                    onChange={(e) => item.onChange(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500"
-                  />
-                </label>
-              ))}
             </div>
           </div>
         </div>
@@ -331,121 +270,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="surface-panel space-y-4 p-5">
             <div className="flex items-center gap-2 border-b border-white/10 pb-3">
               <ShieldCheck className="h-4 w-4 text-emerald-300" />
-              <h3 className="text-sm font-semibold text-white">Two-factor auth</h3>
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs">
-              <div>
-                <p className="font-medium text-white">Require authenticator code</p>
-                <p className="mt-1 text-[11px] text-slate-400">Adds an extra check before account access</p>
-              </div>
-              <button
-                onClick={() => setTwoFactorEnabled(!twoFactorEnabled)}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
-                  twoFactorEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 rounded-full bg-white transition ${
-                    twoFactorEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+              <h3 className="text-sm font-semibold text-white">Session</h3>
             </div>
             <div className="surface-subtle space-y-1 p-4 text-[11px] text-slate-400">
-              <p className="font-medium text-slate-200">Session</p>
               <p>
                 User ID: <span className="font-mono text-cyan-300">{currentUser.id}</span>
               </p>
               <p>
                 Role: <span className="uppercase text-indigo-200">{currentUser.role}</span>
               </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'system' && isSuperAdmin && (
-        <div className="surface-panel space-y-5 p-5 sm:p-6">
-          <div className="flex items-center gap-2 border-b border-white/10 pb-3">
-            <Cpu className="h-4 w-4 text-cyan-300" />
-            <h3 className="text-sm font-semibold text-white">Admin system controls</h3>
-          </div>
-
-          <div className="surface-subtle space-y-3 p-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Workspace mode</p>
-                <p className="mt-1 text-xs text-slate-400">Switch between the live product and architecture docs.</p>
-              </div>
-              <span className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200">
-                Admin only
-              </span>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                onClick={() => setMode('platform')}
-                className={`flex items-center justify-between rounded-3xl border p-4 text-left transition ${
-                  mode === 'platform'
-                    ? 'border-indigo-400/40 bg-indigo-500/10'
-                    : 'border-white/10 bg-slate-950/40 hover:bg-white/[0.04]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Layers className="h-4 w-4 text-indigo-300" />
-                  <div>
-                    <p className="text-sm font-medium text-white">Live workspace</p>
-                    <p className="text-[11px] text-slate-400">Standard product views</p>
-                  </div>
-                </div>
-                {mode === 'platform' && <CheckCircle2 className="h-4 w-4 text-indigo-300" />}
-              </button>
-              <button
-                onClick={() => setMode('blueprint')}
-                className={`flex items-center justify-between rounded-3xl border p-4 text-left transition ${
-                  mode === 'blueprint'
-                    ? 'border-cyan-400/40 bg-cyan-500/10'
-                    : 'border-white/10 bg-slate-950/40 hover:bg-white/[0.04]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <FileText className="h-4 w-4 text-cyan-300" />
-                  <div>
-                    <p className="text-sm font-medium text-white">Blueprint</p>
-                    <p className="text-[11px] text-slate-400">Architecture documentation</p>
-                  </div>
-                </div>
-                {mode === 'blueprint' && <CheckCircle2 className="h-4 w-4 text-cyan-300" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="surface-subtle space-y-3 p-4 text-xs">
-              <h4 className="flex items-center gap-2 font-medium text-white">
-                <Sparkles className="h-4 w-4 text-indigo-300" />
-                AI autopilot
-              </h4>
-              <label className="flex items-center justify-between gap-3 text-slate-400">
-                <span>Enable autonomous optimization suggestions</span>
-                <input
-                  type="checkbox"
-                  checked={aiAutopilot}
-                  onChange={(e) => setAiAutopilot(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500"
-                />
-              </label>
-            </div>
-            <div className="surface-subtle space-y-3 p-4 text-xs">
-              <h4 className="flex items-center gap-2 font-medium text-white">
-                <Key className="h-4 w-4 text-cyan-300" />
-                Supabase
-              </h4>
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Auth + Postgres database</span>
-                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  Connected
-                </span>
-              </div>
             </div>
           </div>
         </div>

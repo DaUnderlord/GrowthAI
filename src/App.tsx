@@ -5,7 +5,6 @@ import { OverviewDashboard } from './components/OverviewDashboard';
 import { GrowthIntelligenceView } from './components/GrowthIntelligenceView';
 import { AudienceDnaView } from './components/AudienceDnaView';
 import { ConversionAttributionView } from './components/ConversionAttributionView';
-import { BlueprintExplorerView } from './components/BlueprintExplorerView';
 import { CampaignManagerView } from './components/CampaignManagerView';
 import { ContentCalendarView } from './components/ContentCalendarView';
 import { CalendarBriefView } from './components/CalendarBriefView';
@@ -35,7 +34,6 @@ import {
 export default function App() {
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
-  const [mode, setMode] = useState<'platform' | 'blueprint'>('platform');
   const [activeView, setActiveView] = useState<string>('overview');
   const [whiteLabelMode, setWhiteLabelMode] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(true);
@@ -281,8 +279,6 @@ export default function App() {
         clients={clients}
         selectedClient={activeClient}
         onSelectClient={(c) => setSelectedClient(c)}
-        mode={mode}
-        setMode={(m) => setMode(m)}
         whiteLabelMode={whiteLabelMode}
         currency={currency}
         setCurrency={setCurrency}
@@ -311,8 +307,6 @@ export default function App() {
             setIsProfileModalOpen(true);
           }}
           onOpenPrivilegesModal={() => setIsPrivilegesModalOpen(true)}
-          mode={mode}
-          setMode={setMode}
           isCollapsed={isSidebarCollapsed}
           setIsCollapsed={setIsSidebarCollapsed}
           mobileOpen={isMobileSidebarOpen}
@@ -354,8 +348,6 @@ export default function App() {
                   Open Agency Hub
                 </button>
               </div>
-            ) : mode === 'blueprint' ? (
-              <BlueprintExplorerView />
             ) : (
               <>
                 {activeView === 'overview' && (
@@ -397,8 +389,6 @@ export default function App() {
                     clients={clients}
                     selectedClient={activeClient}
                     currentUser={activeUser}
-                    whiteLabelMode={whiteLabelMode}
-                    setWhiteLabelMode={setWhiteLabelMode}
                     onAddClient={async (newClient) => {
                       const next = [...clients, newClient];
                       await persistClients(next);
@@ -432,8 +422,6 @@ export default function App() {
                     setCurrency={setCurrency}
                     whiteLabelMode={whiteLabelMode}
                     setWhiteLabelMode={setWhiteLabelMode}
-                    mode={mode}
-                    setMode={setMode}
                     onUserUpdated={(u) => {
                       setCurrentUser(u);
                       if (u.preferences?.currency) setCurrency(u.preferences.currency);

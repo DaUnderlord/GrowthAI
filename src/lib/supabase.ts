@@ -669,17 +669,16 @@ export async function logoutUser(): Promise<void> {
 }
 
 export async function createOrganizationForUser(userId: string, name: string, website?: string) {
-  const { data: org, error } = await supabase
-    .from('organizations')
-    .insert({ name, website: website || null })
-    .select('id')
-    .single();
-  if (error || !org) {
+  const { data: orgId, error } = await supabase.rpc('create_organization_for_current_user', {
+    org_name: name,
+    org_website: website || null,
+  });
+  if (error || !orgId) {
     console.warn('Org create skipped:', error?.message);
     return null;
   }
-  await supabase.from('profiles').update({ org_id: org.id, company_name: name }).eq('id', userId);
-  return org.id as string;
+  if (typeof orgId === 'string') return orgId;
+  return String(orgId);
 }
 
 export async function inviteTeamMember(input: {
@@ -789,19 +788,21 @@ export function subscribeToAuthState(
     }
   };
 
-  supabase.auth
-    .getSession()
-    .then(({ data }) => resolve(data.session))
-    .catch((err) => {
-      console.warn('Supabase getSession failed:', err);
-      if (active) onUserChanged(null);
-    });
-
   const sessionWatchdog = window.setTimeout(() => {
     if (!active) return;
-    console.warn('Supabase getSession timed out');
-    onUserChanged(null);
+    console.warn('Supabase getSession timed out; waiting for auth state');
   }, 8000);
+
+  supabase.auth
+    .getSession()
+    .then(({ data }) => {
+      window.clearTimeout(sessionWatchdog);
+      return resolve(data.session);
+    })
+    .catch((err) => {
+      window.clearTimeout(sessionWatchdog);
+      console.warn('Supabase getSession failed:', err);
+    });
 
   const {
     data: { subscription },

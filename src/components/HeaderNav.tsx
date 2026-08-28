@@ -7,8 +7,6 @@ interface HeaderNavProps {
   clients: ClientProfile[];
   selectedClient: ClientProfile | null;
   onSelectClient: (client: ClientProfile) => void;
-  mode: 'platform' | 'blueprint';
-  setMode: (mode: 'platform' | 'blueprint') => void;
   whiteLabelMode: boolean;
   currency: CurrencyCode;
   setCurrency: (c: CurrencyCode) => void;
@@ -23,7 +21,6 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
   clients,
   selectedClient,
   onSelectClient,
-  mode,
   whiteLabelMode,
   onToggleMobileSidebar,
   isAuthenticated = false,
@@ -52,7 +49,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
             </div>
           </div>
 
-          {mode === 'platform' && isAuthenticated && selectedClient && (
+          {isAuthenticated && selectedClient && (
             <div className="relative">
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -119,7 +116,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
             </div>
           )}
 
-          {mode === 'platform' && !isAuthenticated && (
+          {!isAuthenticated && (
             <button onClick={onOpenLoginModal} className="primary-button text-xs">
               Sign in
             </button>

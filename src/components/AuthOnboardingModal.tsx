@@ -84,12 +84,12 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
   useEffect(() => {
     if (viewMode !== 'wizard' || wizardStep !== 4 || analysisComplete) return;
     setAnalysisProgress(12);
-    const t1 = setTimeout(() => setAnalysisProgress(42), 700);
-    const t2 = setTimeout(() => setAnalysisProgress(78), 1400);
+    const t1 = setTimeout(() => setAnalysisProgress(42), 200);
+    const t2 = setTimeout(() => setAnalysisProgress(78), 450);
     const t3 = setTimeout(() => {
       setAnalysisProgress(100);
       setAnalysisComplete(true);
-    }, 2200);
+    }, 700);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
