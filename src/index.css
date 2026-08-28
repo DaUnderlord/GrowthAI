@@ -15,6 +15,11 @@
     --accent-soft: rgba(142, 200, 216, 0.14);
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     font-family: var(--font-sans);
     background:
@@ -35,6 +40,15 @@
   ::selection {
     background: rgba(142, 200, 216, 0.35);
     color: #f8fafc;
+  }
+
+  /* iOS Safari zooms focused inputs below 16px — keep fields readable without blocking pinch zoom. */
+  @media (max-width: 767px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']),
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
 }
 
