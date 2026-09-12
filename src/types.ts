@@ -89,6 +89,8 @@ export interface ConnectedPlatform {
   apiStatus?: 'live' | 'syncing' | 'offline' | 'needs_auth';
   lastError?: string;
   audienceNote?: string;
+  canPublish?: boolean;
+  publishReadyNote?: string;
   rateLimitQuota?: string;
   oauthTokenMasked?: string;
   livePingMs?: number;
@@ -317,6 +319,12 @@ export interface ContentCalendarItem {
   // Designer & Multimodal Analysis Additions
   visualAssetUrl?: string;
   visualAssetType?: 'image' | 'video';
+  scheduledAt?: string;
+  publishedAt?: string;
+  providerPostId?: string;
+  providerPermalink?: string;
+  publishError?: string;
+  publishBlocked?: boolean;
   designerStatus?: 'in_brief' | 'designing' | 'asset_uploaded' | 'approved';
   designerNotes?: string;
   creativeAnalysis?: {

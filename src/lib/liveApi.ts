@@ -70,6 +70,8 @@ export function connectionsToPlatforms(rows: any[]): ConnectedPlatform[] {
     apiStatus: row.status === 'connected' ? 'live' : row.status === 'error' ? 'offline' : 'offline',
     lastError: row.last_error || undefined,
     audienceNote: row.demographics?.note || undefined,
+    canPublish: Boolean(row.can_publish),
+    publishReadyNote: row.publish_ready_note || undefined,
   }));
 }
 

@@ -10,6 +10,12 @@ export type SocialPlatform =
 
 import { allowedOAuthOrigins, getAppUrl } from '../appUrl';
 import type { ProviderFamily } from '../orgIntegrations';
+import {
+  META_FACEBOOK_SCOPES,
+  META_INSTAGRAM_SCOPES,
+  grantedScopesFromPermissions,
+  hasMetaPublishScopes,
+} from '../../shared/calendarPublish';
 
 export type ProviderOverrideMap = Partial<
   Record<ProviderFamily, { clientId: string; secret: string; extra?: Record<string, string> }>
@@ -113,14 +119,14 @@ export function providerConfig(
       authorizeUrl: 'https://www.facebook.com/v21.0/dialog/oauth',
       clientId: metaId,
       secret: metaSecret,
-      scopes: 'instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_read_user_content,ads_read,business_management',
+      scopes: META_INSTAGRAM_SCOPES,
       configured: Boolean(metaId && metaSecret),
     },
     facebook: {
       authorizeUrl: 'https://www.facebook.com/v21.0/dialog/oauth',
       clientId: metaId,
       secret: metaSecret,
-      scopes: 'pages_show_list,pages_read_engagement,pages_read_user_content,instagram_basic,instagram_manage_insights,ads_read,business_management',
+      scopes: META_FACEBOOK_SCOPES,
       configured: Boolean(metaId && metaSecret),
     },
     meta_ads: {
@@ -200,7 +206,23 @@ export function buildAuthorizeUrl(
   if (platform === 'tiktok') {
     params.set('client_key', config.clientId);
   }
+  if (platform === 'instagram' || platform === 'facebook' || platform === 'meta_ads') {
+    params.set('auth_type', 'rerequest');
+  }
   return `${config.authorizeUrl}?${params.toString()}`;
+}
+
+export async function fetchGrantedMetaScopes(token: string) {
+  const payload = await jsonFetch(
+    `https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(token)}`
+  );
+  const granted = grantedScopesFromPermissions(payload);
+  console.info('[oauth] granted meta scopes', {
+    count: granted ? granted.split(',').length : 0,
+    instagramPublish: hasMetaPublishScopes('instagram', granted),
+    facebookPublish: hasMetaPublishScopes('facebook', granted),
+  });
+  return granted;
 }
 
 async function jsonFetch(url: string, init?: RequestInit) {
@@ -236,13 +258,18 @@ export async function exchangeCodeForToken(
         fb_exchange_token: short.access_token,
       })}`
     ).catch(() => short);
+    const accessToken = longLived.access_token as string;
+    const granted = await fetchGrantedMetaScopes(accessToken).catch((err: any) => {
+      console.warn('[oauth] could not read granted Meta permissions', err.message);
+      return '';
+    });
     return {
-      accessToken: longLived.access_token as string,
+      accessToken,
       refreshToken: undefined as string | undefined,
       expiresAt: longLived.expires_in
         ? new Date(Date.now() + Number(longLived.expires_in) * 1000).toISOString()
         : null,
-      scopes: config.scopes,
+      scopes: granted,
     };
   }
 
@@ -501,7 +528,9 @@ async function fetchMetaStats(platform: string, token: string, extras?: Record<s
   const igDemo = linkedIg?.id
     ? await fetchInstagramDemographics(linkedIg.id, pageToken, Number(linkedIg.followers_count || 0))
     : null;
-  const adsDemo = ads.adAccountId ? await fetchAdsDemographics(ads.adAccountId, token) : {};
+  const adsDemo = ads.adAccountId
+    ? await fetchAdsDemographics(ads.adAccountId, token)
+    : { adsAgeGender: {} as Record<string, number> };
   const hasAudience = Boolean(
     Object.keys(igDemo?.ageGender || {}).length || Object.keys(adsDemo.adsAgeGender || {}).length
   );

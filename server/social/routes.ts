@@ -5,6 +5,7 @@ import { getAppUrl } from '../appUrl';
 import {
   buildAuthorizeUrl,
   exchangeCodeForToken,
+  fetchGrantedMetaScopes,
   fetchLiveStats,
   providerConfig,
   resolveOAuthRedirectUri,
@@ -20,6 +21,7 @@ import {
   type ProviderFamily,
 } from '../orgIntegrations';
 import type { ProviderOverrideMap } from './providers';
+import { hasMetaPublishScopes, publishReadyNote } from '../../shared/calendarPublish';
 
 async function overridesForOrg(orgId?: string | null): Promise<ProviderOverrideMap> {
   const families: ProviderFamily[] = ['meta', 'google', 'tiktok', 'linkedin'];
@@ -223,12 +225,17 @@ export function registerSocialRoutes(app: Express) {
         lastError = err.message;
         stats = emptyStats(String(platform), lastError);
       }
+      const token = String(accessToken).trim();
+      const scopes = ['instagram', 'facebook', 'meta_ads'].includes(String(platform))
+        ? await fetchGrantedMetaScopes(token).catch(() => '')
+        : undefined;
       const connection = await upsertConnection({
         orgId: auth.orgId,
         clientId: String(clientId),
         platform: String(platform),
         stats,
-        accessToken: String(accessToken).trim(),
+        accessToken: token,
+        scopes,
         lastError,
       });
       await rebuildClientInsights(String(clientId), auth.orgId);
@@ -305,7 +312,21 @@ export function registerSocialRoutes(app: Express) {
       if (clientId) q = q.eq('client_id', clientId);
       const { data, error } = await q.order('updated_at', { ascending: false });
       if (error) throw new Error(error.message);
-      res.json({ success: true, connections: data || [] });
+      const ids = (data || []).map((row: any) => row.id);
+      const { data: secrets } = ids.length
+        ? await admin.from('social_connection_secrets').select('connection_id, scopes').in('connection_id', ids)
+        : { data: [] as Array<{ connection_id: string; scopes: string | null }> };
+      const scopeMap = new Map((secrets || []).map((row) => [row.connection_id, row.scopes]));
+      const connections = (data || []).map((row: any) => {
+        const scopes = scopeMap.get(row.id) || '';
+        const canPublish = hasMetaPublishScopes(row.platform, scopes);
+        return {
+          ...row,
+          can_publish: canPublish,
+          publish_ready_note: publishReadyNote(row.platform, scopes, true),
+        };
+      });
+      res.json({ success: true, connections });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -349,12 +370,16 @@ export function registerSocialRoutes(app: Express) {
             adAccountId: row.ad_account_id || '',
           };
           const stats = await fetchLiveStats(row.platform, secret.access_token, extras);
+          const scopes = ['instagram', 'facebook', 'meta_ads'].includes(row.platform)
+            ? await fetchGrantedMetaScopes(secret.access_token).catch(() => undefined)
+            : undefined;
           const connection = await upsertConnection({
             orgId: auth.orgId,
             clientId: String(clientId),
             platform: row.platform,
             stats,
             accessToken: secret.access_token,
+            scopes,
           });
           synced.push(connection);
         } catch (err: any) {
@@ -436,12 +461,20 @@ export function registerSocialRoutes(app: Express) {
       });
       await rebuildClientInsights(row.client_id, row.org_id);
       await admin.from('oauth_states').delete().eq('id', row.id);
+      const canPublish =
+        (row.platform === 'instagram' || row.platform === 'facebook') &&
+        hasMetaPublishScopes(row.platform, tokens.scopes);
+      const publishWarning =
+        (row.platform === 'instagram' || row.platform === 'facebook') && !canPublish
+          ? 'Signed in, but Meta did not grant publishing. Add instagram_content_publish and pages_manage_posts on the Meta app, then reconnect and accept those permissions.'
+          : undefined;
       res.send(
         callbackPage(openerOrigin, {
           ok: true,
           platform: row.platform,
           accountName: stats.accountName,
-          warning: lastError || undefined,
+          warning: lastError || publishWarning,
+          canPublish,
           needsSelection,
         })
       );
@@ -515,14 +548,16 @@ async function upsertConnection(input: {
     .single();
   if (error) throw new Error(error.message);
 
-  const { error: secretErr } = await admin.from('social_connection_secrets').upsert({
+  const secretRow: Record<string, unknown> = {
     connection_id: connection.id,
     access_token: input.accessToken,
-    refresh_token: input.refreshToken || null,
-    token_expires_at: input.expiresAt || null,
-    scopes: input.scopes || null,
     updated_at: new Date().toISOString(),
-  });
+  };
+  if (input.refreshToken !== undefined) secretRow.refresh_token = input.refreshToken || null;
+  if (input.expiresAt !== undefined) secretRow.token_expires_at = input.expiresAt || null;
+  if (input.scopes !== undefined) secretRow.scopes = input.scopes || null;
+
+  const { error: secretErr } = await admin.from('social_connection_secrets').upsert(secretRow);
   if (secretErr) throw new Error(secretErr.message);
   return connection;
 }

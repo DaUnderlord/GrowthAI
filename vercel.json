@@ -17,6 +17,8 @@
     { "source": "/api/org/:path*", "destination": "/api" },
     { "source": "/api/campaigns/:path*", "destination": "/api" },
     { "source": "/api/insights/:path*", "destination": "/api" },
+    { "source": "/api/calendar", "destination": "/api" },
+    { "source": "/api/calendar/:path*", "destination": "/api" },
     { "source": "/api/stripe/:path*", "destination": "/api" },
     { "source": "/auth/:path*", "destination": "/api/auth/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
@@ -27,6 +29,12 @@
       "memory": 1024
     }
   },
+  "crons": [
+    {
+      "path": "/api/calendar/due",
+      "schedule": "0 8 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

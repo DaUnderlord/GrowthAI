@@ -20,6 +20,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { ClientProfile, CurrencyCode, UserProfile } from './types';
 import { WorkspaceLocaleProvider } from './lib/WorkspaceLocale';
 import { BlueprintExplorerView } from './components/BlueprintExplorerView';
+import { flushDuePosts } from './lib/calendarPublishApi';
 import {
   subscribeToClients,
   subscribeToUsers,
@@ -117,6 +118,11 @@ export default function App() {
     const timer = window.setTimeout(() => setAuthReady(true), 5000);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.orgId) return;
+    void flushDuePosts().catch(() => undefined);
+  }, [currentUser?.orgId]);
 
   useEffect(() => {
     if (splashDone && !isAuthenticated) {

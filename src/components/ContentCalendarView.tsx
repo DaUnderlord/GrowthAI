@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Check,
   Copy,
+  ExternalLink,
+  ImagePlus,
   Plus,
   RefreshCw,
+  Send,
   Share2,
   Sparkles,
   Trash2,
@@ -31,6 +34,16 @@ import {
 } from '../lib/supabase';
 import { callGrowthAi } from '../lib/aiApi';
 import { parseCalendarAuditMarkdown } from '../lib/clientInsights';
+import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
+import { dayNameForDate, scheduledAtIso, todayInZone } from '../../shared/calendarPublish';
+import {
+  fetchCalendarReadiness,
+  flushDuePosts,
+  publishCalendarItemNow,
+  uploadCalendarMedia,
+  type CalendarReadiness,
+} from '../lib/calendarPublishApi';
+import { navigateView } from '../lib/liveApi';
 
 const CRAFT_OPTIONS: Array<{ id: CalendarCraftRole; label: string }> = [
   { id: 'designer', label: 'Graphic designer' },
@@ -75,6 +88,17 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
   const [shareLabel, setShareLabel] = useState('Content calendar brief');
   const [shareBusy, setShareBusy] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const { timeZone } = useWorkspaceLocale();
+  const [readiness, setReadiness] = useState<{ instagram: CalendarReadiness; facebook: CalendarReadiness } | null>(
+    null
+  );
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [publishMessage, setPublishMessage] = useState<string | null>(null);
+  const [newCaption, setNewCaption] = useState('');
+  const [newMediaUrl, setNewMediaUrl] = useState('');
+  const [newMediaType, setNewMediaType] = useState<'image' | 'video' | ''>('');
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [savingAssetId, setSavingAssetId] = useState<string | null>(null);
 
   const handleDeletePost = async (id: string) => {
     setCalendarItems((prev) => prev.filter((item) => item.id !== id));
@@ -91,8 +115,8 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
   const [newTopic, setNewTopic] = useState('');
   const [newHook, setNewHook] = useState('');
   const [newPlatform, setNewPlatform] = useState<any>('instagram');
-  const [newType, setNewType] = useState<any>('Reel');
-  const [newDate, setNewDate] = useState('2026-08-18');
+  const [newType, setNewType] = useState<any>('Carousel');
+  const [newDate, setNewDate] = useState(() => todayInZone());
   const [newTime, setNewTime] = useState('19:30');
   const [newCta, setNewCta] = useState('Comment "GLOW" for free guide');
 
@@ -103,6 +127,38 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
     });
 
     return () => unsubscribe();
+  }, [client.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchCalendarReadiness(client.id)
+      .then((data) => {
+        if (!cancelled) setReadiness(data);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [client.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = () => {
+      void flushDuePosts(client.id)
+        .then((result) => {
+          if (cancelled || !result.published.length) return;
+          setPublishMessage(
+            `Published ${result.published.length} due post${result.published.length === 1 ? '' : 's'} to Meta.`
+          );
+        })
+        .catch(() => undefined);
+    };
+    run();
+    const timer = window.setInterval(run, 45000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [client.id]);
 
   useEffect(() => {
@@ -180,13 +236,15 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
   const handleApplyAiCorrections = async () => {
     const nextItems = calendarItems.map((item) => {
       if (item.status === 'needs_correction' || item.aiScore < 70) {
+        const time = item.aiSuggestedTime || '19:30';
         return {
           ...item,
           hookText: item.aiSuggestedHook || item.hookText,
-          time: item.aiSuggestedTime || '19:30',
+          time,
           status: 'scheduled' as const,
           aiScore: 90,
           aiFeedback: 'Corrected by GrowthOS AI: Optimized hook & peak evening posting window.',
+          scheduledAt: scheduledAtIso(item.date, time, timeZone) || item.scheduledAt,
         };
       }
       return item;
@@ -323,6 +381,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
         status: 'scheduled' as const,
         aiScore: 85,
         aiFeedback: 'Imported calendar entry.',
+        scheduledAt: scheduledAtIso(date, '19:30', timeZone) || undefined,
       };
     });
 
@@ -346,23 +405,29 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
       id: `post-${Date.now()}`,
       clientId: client.id,
       date: newDate,
-      dayOfWeek: 'Thursday',
+      dayOfWeek: dayNameForDate(newDate, timeZone),
       time: newTime,
       platform: newPlatform,
       contentType: newType,
       topic: newTopic,
       hookText: newHook,
-      captionText: `${newTopic}. Connect with our specialists today.`,
+      captionText: newCaption.trim() || `${newTopic}. ${newHook}`.trim(),
       cta: newCta,
       status: 'scheduled',
       aiScore: 88,
       aiFeedback: 'Custom user-created post entry.',
+      visualAssetUrl: newMediaUrl || undefined,
+      visualAssetType: newMediaType || undefined,
+      scheduledAt: scheduledAtIso(newDate, newTime, timeZone) || undefined,
     };
 
     setCalendarItems([newItem, ...calendarItems]);
     setShowAddPostModal(false);
     setNewTopic('');
     setNewHook('');
+    setNewCaption('');
+    setNewMediaUrl('');
+    setNewMediaType('');
 
     try {
       await saveCalendarItem(newItem);
@@ -370,6 +435,93 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleUploadForItem = async (item: ContentCalendarItem, file: File) => {
+    if (!currentUser.orgId) {
+      setPublishMessage('Finish workspace onboarding before uploading media.');
+      return;
+    }
+    setSavingAssetId(item.id);
+    try {
+      const uploaded = await uploadCalendarMedia(currentUser.orgId, client.id, file);
+      const updated = {
+        ...item,
+        visualAssetUrl: uploaded.url,
+        visualAssetType: uploaded.type,
+        publishError: undefined,
+        publishBlocked: false,
+      };
+      setCalendarItems((prev) => prev.map((row) => (row.id === item.id ? updated : row)));
+      await saveCalendarItem(updated);
+      setSyncStatus('live');
+    } catch (err: any) {
+      setPublishMessage(err.message || 'Could not upload media.');
+    } finally {
+      setSavingAssetId(null);
+    }
+  };
+
+  const handleNewMediaFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!currentUser.orgId) {
+      setPublishMessage('Finish workspace onboarding before uploading media.');
+      return;
+    }
+    setUploadingMedia(true);
+    try {
+      const uploaded = await uploadCalendarMedia(currentUser.orgId, client.id, file);
+      setNewMediaUrl(uploaded.url);
+      setNewMediaType(uploaded.type);
+    } catch (err: any) {
+      setPublishMessage(err.message || 'Could not upload media.');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const handleSaveCaption = async (item: ContentCalendarItem, captionText: string) => {
+    const updated = { ...item, captionText };
+    setCalendarItems((prev) => prev.map((row) => (row.id === item.id ? updated : row)));
+    try {
+      await saveCalendarItem(updated);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handlePublishNow = async (item: ContentCalendarItem) => {
+    setPublishingId(item.id);
+    setPublishMessage(null);
+    try {
+      const result = await publishCalendarItemNow(item.id);
+      setPublishMessage(
+        result.alreadyPublished
+          ? 'Already live on Meta.'
+          : `Published to ${result.accountLabel || item.platform}${result.note ? ` · ${result.note}` : ''}`
+      );
+    } catch (err: any) {
+      setPublishMessage(err.message || 'Publish failed.');
+    } finally {
+      setPublishingId(null);
+    }
+  };
+
+  const statusLabel = (item: ContentCalendarItem) => {
+    if (item.status === 'published' || item.providerPostId) return { text: 'Published', className: 'text-emerald-300' };
+    if (item.publishBlocked || item.publishError) return { text: 'Failed', className: 'text-rose-300' };
+    if (item.status === 'needs_correction') return { text: 'Review', className: 'text-amber-300' };
+    if (item.status === 'draft') return { text: 'Draft', className: 'text-slate-500' };
+    const due = item.scheduledAt && new Date(item.scheduledAt).getTime() <= Date.now();
+    return due
+      ? { text: 'Due', className: 'text-cyan-300' }
+      : { text: 'Scheduled', className: 'text-slate-500' };
+  };
+
+  const canPublishPlatform = (platform: string) => {
+    if (platform === 'instagram') return Boolean(readiness?.instagram.canPublish);
+    if (platform === 'facebook') return Boolean(readiness?.facebook.canPublish);
+    return false;
   };
 
   const stats = useMemo(() => {
@@ -390,7 +542,8 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
             <p className="eyebrow-label">Content calendar</p>
             <h2 className="font-display mt-1 text-3xl font-medium text-white">Schedule</h2>
             <p className="mt-2 text-sm text-slate-400">
-              {stats.scheduled} scheduled · {stats.needsAttention} need review · avg score {stats.averageScore}
+              {stats.scheduled} scheduled · {stats.needsAttention} need review · avg score {stats.averageScore}.
+              Instagram and Facebook Page posts go live at the scheduled time in {timeZone}.
             </p>
           </div>
           <div className="relative flex flex-wrap items-center gap-2">
@@ -491,16 +644,43 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
       <div className="surface-panel overflow-hidden">
         <div className="border-b border-white/[0.06] px-5 py-4">
           <p className="eyebrow-label">Posts</p>
-          <h3 className="font-display mt-1 text-xl font-medium text-white">August 2026</h3>
+          <h3 className="font-display mt-1 text-xl font-medium text-white">Live schedule</h3>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Instagram and Facebook publish for real when the time hits. TikTok and LinkedIn stay on this calendar only.
+          </p>
+          {readiness && (
+            <div className="mt-3 space-y-1 text-xs text-slate-400">
+              <p>
+                Instagram:{' '}
+                {readiness.instagram.canPublish
+                  ? `Publishing enabled${readiness.instagram.accountName ? ` · ${readiness.instagram.accountName}` : ''}`
+                  : readiness.instagram.note || 'Connect the professional account to publish.'}
+              </p>
+              <p>
+                Facebook:{' '}
+                {readiness.facebook.canPublish
+                  ? `Publishing enabled${readiness.facebook.accountName ? ` · ${readiness.facebook.accountName}` : ''}`
+                  : readiness.facebook.note || 'Connect the Page to publish.'}
+              </p>
+              {(!readiness.instagram.canPublish || !readiness.facebook.canPublish) && (
+                <button type="button" className="text-link" onClick={() => navigateView('agency')}>
+                  Open Social accounts to reconnect Meta
+                </button>
+              )}
+            </div>
+          )}
+          {publishMessage && <p className="mt-3 text-xs text-cyan-200">{publishMessage}</p>}
         </div>
         <div className="divide-y divide-white/[0.05]">
           {calendarItems.length === 0 && (
             <div className="px-5 py-8 text-sm text-slate-400">
-              No scheduled posts yet. Add a post or import a schedule (one line per post, or `YYYY-MM-DD | topic | hook`).
+              No scheduled posts yet. Add a post with a public image or video for Instagram, or a caption for Facebook.
             </div>
           )}
           {calendarItems.map((item) => {
             const expanded = expandedPostId === item.id;
+            const badge = statusLabel(item);
+            const livePlatform = item.platform === 'instagram' || item.platform === 'facebook';
             return (
               <div key={item.id} className={item.status === 'needs_correction' ? 'bg-amber-500/[0.03]' : ''}>
                 <button
@@ -515,15 +695,44 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
                       {item.assigneeName ? ` · ${item.assigneeName}` : ''}
                     </p>
                   </div>
-                  <span className="shrink-0 text-xs text-slate-500">{item.aiScore}</span>
-                  <span className={`shrink-0 text-[11px] ${item.status === 'needs_correction' ? 'text-amber-300' : 'text-slate-500'}`}>
-                    {item.status === 'needs_correction' ? 'Review' : 'OK'}
-                  </span>
+                  <span className={`shrink-0 text-[11px] ${badge.className}`}>{badge.text}</span>
                 </button>
                 {expanded && (
                   <div className="space-y-3 border-t border-white/[0.04] px-4 py-4 sm:px-5">
                     <p className="text-sm text-slate-400">&ldquo;{item.hookText}&rdquo;</p>
+                    <label className="block text-[11px] text-slate-500">
+                      Caption that goes live
+                      <textarea
+                        defaultValue={item.captionText}
+                        key={`${item.id}-${item.captionText}`}
+                        onBlur={(e) => {
+                          if (e.target.value !== item.captionText) void handleSaveCaption(item, e.target.value);
+                        }}
+                        rows={3}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white"
+                      />
+                    </label>
                     <p className="text-xs text-slate-500">CTA: {item.cta}</p>
+                    {item.visualAssetUrl ? (
+                      <p className="truncate text-[11px] text-slate-400">Media: {item.visualAssetUrl}</p>
+                    ) : (
+                      <p className="text-[11px] text-amber-200">
+                        {item.platform === 'facebook'
+                          ? 'No media yet. Facebook can still publish a text post.'
+                          : 'No public media yet. Instagram needs an uploaded image or video.'}
+                      </p>
+                    )}
+                    {item.publishError && <p className="text-xs text-rose-200">{item.publishError}</p>}
+                    {item.providerPermalink && (
+                      <a
+                        href={item.providerPermalink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-cyan-300"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> View live post
+                      </a>
+                    )}
                     {item.status === 'needs_correction' && item.aiSuggestedHook && (
                       <p className="text-xs text-amber-200">
                         Try: &ldquo;{item.aiSuggestedHook}&rdquo; at {item.aiSuggestedTime || '19:30'}
@@ -569,7 +778,42 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
                         </select>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <label className="secondary-button !py-1.5 text-xs">
+                        <ImagePlus className="h-3.5 w-3.5" />
+                        {savingAssetId === item.id ? 'Uploading…' : 'Upload media'}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (file) void handleUploadForItem(item, file);
+                          }}
+                        />
+                      </label>
+                      {livePlatform && (
+                        <button
+                          type="button"
+                          disabled={publishingId === item.id}
+                          onClick={() => void handlePublishNow(item)}
+                          className="primary-button !py-1.5 text-xs"
+                        >
+                          {publishingId === item.id ? (
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Send className="h-3.5 w-3.5" />
+                          )}
+                          {item.providerPostId
+                            ? 'Already published'
+                            : publishingId === item.id
+                              ? 'Publishing…'
+                              : canPublishPlatform(item.platform)
+                                ? 'Publish now'
+                                : 'Try publish'}
+                        </button>
+                      )}
                       {deletingPostId === item.id ? (
                         <button onClick={() => handleDeletePost(item.id)} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs text-white">
                           Confirm delete
@@ -583,6 +827,11 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
                         </button>
                       )}
                     </div>
+                    {!livePlatform && (
+                      <p className="text-[11px] text-slate-500">
+                        Saved on the calendar only. GrowthOS does not upload to {item.platform} yet.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -760,6 +1009,9 @@ Topic 3: Doctor Q&A on acne treatments..."
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md space-y-4 rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
             <h3 className="text-lg font-semibold text-white">Add a scheduled post</h3>
+            <p className="text-xs leading-5 text-slate-400">
+              Times use {timeZone}. Instagram needs a public image or video. Facebook can publish a caption alone.
+            </p>
             <form onSubmit={handleSaveNewPost} className="space-y-3 text-xs">
               <div>
                 <label className="mb-1 block font-semibold text-slate-300">Post topic</label>
@@ -793,10 +1045,10 @@ Topic 3: Doctor Q&A on acne treatments..."
                     onChange={(e) => setNewPlatform(e.target.value as any)}
                     className="w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2 text-white"
                   >
-                    <option value="instagram">Instagram</option>
-                    <option value="tiktok">TikTok</option>
-                    <option value="facebook">Facebook</option>
-                    <option value="linkedin">LinkedIn</option>
+                    <option value="instagram">Instagram (publishes live)</option>
+                    <option value="facebook">Facebook Page (publishes live)</option>
+                    <option value="tiktok">TikTok (calendar only)</option>
+                    <option value="linkedin">LinkedIn (calendar only)</option>
                   </select>
                 </div>
                 <div>
@@ -806,8 +1058,8 @@ Topic 3: Doctor Q&A on acne treatments..."
                     onChange={(e) => setNewType(e.target.value as any)}
                     className="w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2 text-white"
                   >
+                    <option value="Carousel">Photo / carousel</option>
                     <option value="Reel">Reel / Video</option>
-                    <option value="Carousel">Carousel</option>
                     <option value="Story">Story</option>
                     <option value="Article">Article</option>
                   </select>
@@ -836,6 +1088,17 @@ Topic 3: Doctor Q&A on acne treatments..."
               </div>
 
               <div>
+                <label className="mb-1 block font-semibold text-slate-300">Caption that goes live</label>
+                <textarea
+                  rows={3}
+                  value={newCaption}
+                  onChange={(e) => setNewCaption(e.target.value)}
+                  placeholder="This is the text Meta will post."
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
                 <label className="mb-1 block font-semibold text-slate-300">Call to action</label>
                 <input
                   type="text"
@@ -843,6 +1106,27 @@ Topic 3: Doctor Q&A on acne treatments..."
                   onChange={(e) => setNewCta(e.target.value)}
                   className="w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2 text-white"
                 />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-300">Media</label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) void handleNewMediaFile(file);
+                  }}
+                  className="w-full text-slate-300"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {uploadingMedia
+                    ? 'Uploading to public storage…'
+                    : newMediaUrl
+                      ? `Ready: ${newMediaUrl}`
+                      : 'JPEG, PNG, WebP, MP4, or MOV. Meta fetches this URL.'}
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3">

@@ -3,6 +3,7 @@ import express, { type Express } from "express";
 import { registerMetaWebhookRoutes } from "./meta/webhook";
 import { registerWhatsAppStaffRoutes, requireSupabaseUser } from "./meta/staffRoutes";
 import { registerSocialRoutes } from "./social/routes";
+import { registerPublishRoutes } from "./social/publishRoutes";
 import { registerCommerceRoutes } from "./commerceRoutes";
 import { isEmailConfigured } from "./email";
 import { isStripeConfigured } from "./stripeBilling";
@@ -84,6 +85,7 @@ export function createApp(): Express {
   registerMetaWebhookRoutes(app, generateGrowthAI);
   registerWhatsAppStaffRoutes(app, generateGrowthAI);
   registerSocialRoutes(app);
+  registerPublishRoutes(app);
   registerCommerceRoutes(app);
 
   const growthAi = [requireSupabaseUser];

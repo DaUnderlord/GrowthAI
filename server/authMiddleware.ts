@@ -6,7 +6,13 @@ export type AuthContext = {
   email?: string;
   orgId: string | null;
   role?: string;
+  privileges?: { can_manage_calendar?: boolean } | null;
 };
+
+export function canManageCalendar(auth: AuthContext) {
+  if (auth.role && ['admin', 'super_admin', 'manager'].includes(auth.role)) return true;
+  return Boolean(auth.privileges?.can_manage_calendar);
+}
 
 export async function requireSupabaseUser(req: Request, res: Response, next: NextFunction) {
   try {
@@ -26,7 +32,7 @@ export async function requireSupabaseUser(req: Request, res: Response, next: Nex
 
     const { data: profile } = await anon
       .from('profiles')
-      .select('id, email, org_id, role')
+      .select('id, email, org_id, role, privileges')
       .eq('id', userData.user.id)
       .maybeSingle();
 
@@ -35,6 +41,7 @@ export async function requireSupabaseUser(req: Request, res: Response, next: Nex
       email: userData.user.email,
       orgId: profile?.org_id || null,
       role: profile?.role,
+      privileges: profile?.privileges || null,
     } as AuthContext;
     next();
   } catch (err: any) {

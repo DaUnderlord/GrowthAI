@@ -129,7 +129,9 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
               showToast(
                 event.data.warning
                   ? `${event.data.accountName || platformType} signed in, but sync needs attention`
-                  : `${event.data.accountName || platformType} connected`
+                  : event.data.canPublish === false && (platformType === 'instagram' || platformType === 'facebook')
+                    ? `${event.data.accountName || platformType} connected for insights. Reconnect after adding publishing permissions on the Meta app.`
+                    : `${event.data.accountName || platformType} connected`
               );
               if (event.data.warning) setOauthError(event.data.warning);
             }
@@ -253,6 +255,38 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     }
   };
 
+  const handleReconnect = (platform: PlatformType) => {
+    setSelectedChannel(platform);
+    setShowConnectModal(true);
+    setOauthAuthTab('popup');
+    setOauthError(
+      platform === 'instagram' || platform === 'facebook'
+        ? 'Sign in again and accept publishing. The Meta app must include instagram_content_publish and pages_manage_posts.'
+        : null
+    );
+    void (async () => {
+      setSelectedChannel(platform);
+      setIsOauthLoggingIn(true);
+      try {
+        const redirectUri = oauthRedirectUri();
+        const res = await authFetch(
+          `/api/auth/${platform}/url?clientId=${encodeURIComponent(client.id)}&redirectUri=${encodeURIComponent(redirectUri)}`
+        );
+        const data = await res.json();
+        if (!data.url) throw new Error(data.error || 'Could not start reconnect.');
+        const authWindow = window.open(
+          data.url,
+          `oauth_popup_${platform}`,
+          'width=600,height=700,resizable=yes,scrollbars=yes'
+        );
+        if (!authWindow) throw new Error('Browser blocked the popup. Allow popups, then retry.');
+      } catch (err: any) {
+        setOauthError(err.message || 'Could not start reconnect.');
+        setIsOauthLoggingIn(false);
+      }
+    })();
+  };
+
   const handleToggleConnection = (id: string) => {
     const platform = platforms.find((p) => p.id === id);
     if (platform?.connected) {
@@ -314,10 +348,10 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
         <div>
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-indigo-400" />
-            <h2 className="text-xl font-bold text-white">Social Media Channels & API Connection Hub</h2>
+            <h2 className="text-xl font-bold text-white">Social accounts</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Manage official OAuth integrations, ad account tokens, and sync status for <span className="text-indigo-300 font-semibold">{client.name}</span> across all social media networks.
+            Connect and sync Instagram, Facebook, TikTok, and other accounts for <span className="text-indigo-300 font-semibold">{client.name}</span>.
           </p>
         </div>
         <button
@@ -359,6 +393,13 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                   {p.connected ? 'Active Sync' : 'Disconnected'}
                 </span>
               </div>
+              {(p.id === 'instagram' || p.id === 'facebook') && p.connected && (
+                <p className={`text-[11px] leading-relaxed ${p.canPublish ? 'text-emerald-300' : 'text-amber-200'}`}>
+                  {p.canPublish
+                    ? 'Calendar can publish to this professional account.'
+                    : p.publishReadyNote || 'Reconnect Meta and accept publishing so the calendar can post.'}
+                </p>
+              )}
 
               {/* Stats Box */}
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -397,6 +438,14 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {(p.id === 'instagram' || p.id === 'facebook') && p.connected && !p.canPublish && (
+                    <button
+                      onClick={() => handleReconnect(p.id)}
+                      className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/30 cursor-pointer font-semibold text-[11px]"
+                    >
+                      Reconnect
+                    </button>
+                  )}
                   <button
                     onClick={() => handleSyncAccount(p.id, p.id, p.accountName)}
                     disabled={isSyncing || !p.connected}
@@ -463,7 +512,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Link2 className="w-5 h-5 text-cyan-400" />
-                Connect Live Social Account via OAuth 2.0
+                Connect a brand account
               </h3>
               <button
                 onClick={() => setShowConnectModal(false)}
@@ -550,14 +599,14 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                   onChange={(e) => setSelectedChannel(e.target.value as PlatformType)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-medium"
                 >
-                  <option value="instagram">Instagram Professional (Meta Graph API)</option>
-                  <option value="facebook">Facebook Page (Meta OAuth 2.0)</option>
-                  <option value="youtube">YouTube Channel (Google OAuth 2.0)</option>
-                  <option value="google_analytics">Google Analytics 4 (Google Cloud OAuth)</option>
-                  <option value="linkedin">LinkedIn Company Page (LinkedIn OAuth 2.0)</option>
-                  <option value="tiktok">TikTok Business (TikTok for Developers API)</option>
-                  <option value="meta_ads">Meta Ads Manager</option>
-                  <option value="google_ads">Google Ads & PMax API</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="facebook">Facebook Page</option>
+                  <option value="youtube">YouTube</option>
+                  <option value="google_analytics">Google Analytics</option>
+                  <option value="linkedin">LinkedIn Page</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="meta_ads">Meta Ads</option>
+                  <option value="google_ads">Google Ads</option>
                 </select>
               </div>
 
@@ -578,10 +627,10 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
                     <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      OAuth 2.0 Official Provider Authorization
+                      Sign in with this network
                     </span>
                     <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Save your {selectedChannel.replace('_', ' ')} app credentials above (if you have not), then sign in. GrowthOS uses your app, not a shared developer account.
+                      Save the {selectedChannel.replace('_', ' ')} connection above if you have not, then sign in to this brand’s account.
                     </p>
                   </div>
 
@@ -636,17 +685,11 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
               {/* Tab 3: OAuth Setup Guide */}
               {oauthAuthTab === 'guide' && (
                 <div className="space-y-2 p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-300">
-                  <span className="font-bold text-white block text-xs">📋 OAuth Developer Redirect Setup:</span>
-                  <p>Add this redirect URL in your own Meta, Google, TikTok, or LinkedIn app. The exact URL is also shown in Settings → Integrations after you save the app.</p>
+                  <span className="font-bold text-white block text-xs">Redirect URL</span>
+                  <p>Add this URL in Meta, Google, TikTok, or LinkedIn so sign-in can return here.</p>
                   <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 font-mono text-cyan-300 text-[10px] break-all select-all">
                     {oauthRedirectUri()}
                   </div>
-                  <ul className="list-disc pl-4 space-y-1 text-slate-400 text-[10px]">
-                    <li>You paste Client ID and Secret in GrowthOS. Do not ask the GrowthOS developer for keys.</li>
-                    <li>Meta: Facebook Login + Instagram + WhatsApp + Marketing API as needed.</li>
-                    <li>Google: YouTube Data API, Analytics Data API, and Ads API if you use ads.</li>
-                    <li>TikTok: Login Kit and user stats. LinkedIn: Sign In + organization products for page insights.</li>
-                  </ul>
                 </div>
               )}
             </div>

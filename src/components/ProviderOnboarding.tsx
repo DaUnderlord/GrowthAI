@@ -23,10 +23,17 @@ const GUIDES: Record<
   meta: {
     titleKey: 'connectMeta',
     docs: 'https://developers.facebook.com/apps',
-    docsLabel: 'Meta for Developers',
+    docsLabel: 'Meta',
     idLabel: 'Meta App ID',
     secretLabel: 'App Secret',
-    products: ['Facebook Login for Business', 'Instagram Graph API', 'Business Management', 'Marketing API', 'WhatsApp'],
+    products: [
+      'Instagram',
+      'Facebook Pages',
+      'WhatsApp',
+      'Ads',
+      'instagram_content_publish',
+      'pages_manage_posts',
+    ],
     connect: [
       { platform: 'instagram', label: 'Instagram' },
       { platform: 'facebook', label: 'Facebook Page' },

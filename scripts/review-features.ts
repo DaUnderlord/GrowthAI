@@ -7,6 +7,14 @@ import path from 'node:path';
 import { createServer } from 'node:http';
 import { createApp } from '../server/app';
 import { buildAuthorizeUrl, pickMetaAsset, providerConfig, resolveOAuthRedirectUri } from '../server/social/providers';
+import {
+  composeCaption,
+  grantedScopesFromPermissions,
+  hasMetaPublishScopes,
+  isPublicMediaUrl,
+  resolvePublishKind,
+  scheduledAtIso,
+} from '../shared/calendarPublish';
 import { campaignMetricsFromInsights } from '../server/insightsEngine';
 import { PRODUCTION_APP_URL, getAppUrl } from '../server/appUrl';
 
@@ -170,6 +178,91 @@ async function main() {
       { clientName: 'Acme' }
     )?.id === 'ig-a'
   );
+  assert(
+    'calendar publish migration exists',
+    fs.existsSync(path.join(process.cwd(), 'supabase/migrations/20260912190000_calendar_publish.sql'))
+  );
+  assert(
+    'Vercel routes calendar publish to Express',
+    read('vercel.json').includes('/api/calendar/:path*') && read('vercel.json').includes('/api/calendar/due')
+  );
+  assert(
+    'Instagram OAuth requests content publish',
+    providerConfig('instagram', { meta: { clientId: '123', secret: 'abc' } }).scopes.includes(
+      'instagram_content_publish'
+    )
+  );
+  assert(
+    'Facebook OAuth requests Page publishing',
+    providerConfig('facebook', { meta: { clientId: '123', secret: 'abc' } }).scopes.includes('pages_manage_posts')
+  );
+  const publishAuthUrl = buildAuthorizeUrl(
+    'instagram',
+    'state-publish',
+    { meta: { clientId: '123', secret: 'abc' } },
+    'https://app.growth.example/auth/callback'
+  );
+  assert('Meta reconnect re-asks for publishing scopes', publishAuthUrl.includes('auth_type=rerequest'));
+  assert(
+    'insights-only tokens cannot publish',
+    hasMetaPublishScopes('instagram', 'instagram_basic,instagram_manage_insights') === false
+  );
+  assert(
+    'publish scopes unlock Instagram posting',
+    hasMetaPublishScopes('instagram', 'instagram_content_publish,pages_manage_posts') === true
+  );
+  assert(
+    'granted scopes ignore declined Meta permissions',
+    grantedScopesFromPermissions({
+      data: [
+        { permission: 'instagram_basic', status: 'granted' },
+        { permission: 'instagram_content_publish', status: 'declined' },
+      ],
+    }) === 'instagram_basic'
+  );
+  assert(
+    'OAuth stores Graph granted permissions, not the requested list',
+    read('server/social/providers.ts').includes('fetchGrantedMetaScopes') &&
+      read('server/social/providers.ts').includes('/me/permissions')
+  );
+  assert(
+    'publish claim is a single Postgres update',
+    fs.existsSync(path.join(process.cwd(), 'supabase/migrations/20260912200000_calendar_publish_claim.sql')) &&
+      read('server/social/publishRunner.ts').includes("rpc('claim_calendar_publish'")
+  );
+  assert(
+    'Vercel cron is daily so Hobby deploys are valid',
+    read('vercel.json').includes('"0 8 * * *"')
+  );
+  assert(
+    'GET due requires an org unless cron-authenticated',
+    read('server/social/publishRoutes.ts').includes("Complete workspace onboarding first.") &&
+      read('server/social/publishRoutes.ts').includes('canManageCalendar')
+  );
+  assert(
+    'new calendar posts default to a photo format',
+    read('src/components/ContentCalendarView.tsx').includes("useState<any>('Carousel')")
+  );
+  assert('base64 media is rejected for Meta', isPublicMediaUrl('data:image/png;base64,abc').ok === false);
+  assert(
+    'https media is accepted',
+    isPublicMediaUrl('https://example.com/calendar-media/x.jpg').ok === true
+  );
+  assert(
+    'Instagram reel without video is refused',
+    Boolean(resolvePublishKind({ platform: 'instagram', contentType: 'Reel' }).error)
+  );
+  assert(
+    'Facebook can publish caption-only',
+    resolvePublishKind({ platform: 'facebook', captionText: 'Hello from GrowthOS' }).kind === 'fb_text'
+  );
+  assert(
+    'caption prefers the live caption field',
+    composeCaption({ topic: 'Topic', hookText: 'Hook', captionText: 'Live caption', cta: 'Shop' }) ===
+      'Live caption\n\nShop'
+  );
+  const lagos = scheduledAtIso('2026-09-12', '19:30', 'Africa/Lagos');
+  assert('scheduled_at is stored as an absolute instant', Boolean(lagos && new Date(lagos).toISOString() === lagos));
 
   const app = createApp();
   const http = await listen(app);
@@ -193,6 +286,11 @@ async function main() {
 
     const insights = await fetch(`${http.url}/api/insights/client-1`);
     assert('GET /api/insights/:id without JWT is 401', insights.status === 401);
+
+    const due = await fetch(`${http.url}/api/calendar/due`, { method: 'POST' });
+    assert('POST /api/calendar/due without JWT or cron secret is 401', due.status === 401);
+    const publishNow = await fetch(`${http.url}/api/calendar/post-1/publish`, { method: 'POST' });
+    assert('POST /api/calendar/:id/publish without JWT is 401', publishNow.status === 401);
 
     const webhook = await fetch(`${http.url}/api/meta/webhook`);
     assert('GET /api/meta/webhook without verify token is 403', webhook.status === 403);

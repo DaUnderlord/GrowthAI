@@ -15,12 +15,12 @@ const STEPS = [
   {
     icon: Sparkles,
     title: 'Welcome to GrowthOS',
-    body: 'Your agency workspace for campaigns, content, WhatsApp, and live channel metrics. GrowthOS does not ship with shared Meta, Google, TikTok, or LinkedIn keys.',
+    body: 'Your agency workspace for campaigns, content, WhatsApp, and live channel metrics across the brands you manage.',
   },
   {
     icon: Link2,
     title: 'Connect your own apps',
-    body: 'In Agency Hub → Connect apps (or Settings → Integrations), create a free developer app for each network, paste your Client ID and Secret, then sign in for the brand you selected. Instagram, Facebook, Ads, YouTube, GA4, TikTok, LinkedIn, and WhatsApp all use credentials you add.',
+    body: 'In Agency Hub → Connect apps, save Meta, Google, TikTok, or LinkedIn for your workspace, then sign in for the brand you selected.',
   },
   {
     icon: BarChart2,
@@ -30,12 +30,12 @@ const STEPS = [
   {
     icon: Target,
     title: 'Growth AI Suite',
-    body: 'Gemini can draft campaigns and creative once you have a brand. Paid reboost and ad metrics need a connected ads account from your own app.',
+    body: 'Growth AI can draft campaigns and creative once you have a brand. Paid reboost and ad metrics need a connected ads account.',
   },
   {
     icon: Calendar,
     title: 'Campaigns & calendar',
-    body: 'Plan campaigns, schedule posts, run AI calendar audits, and share brief links with your team. Campaign numbers stay at zero until live data exists.',
+    body: 'Plan campaigns and schedule posts. Instagram and Facebook Page items publish at the scheduled time once the professional account is connected with publishing permission. Campaign numbers stay at zero until live data exists.',
   },
   {
     icon: MessageCircle,

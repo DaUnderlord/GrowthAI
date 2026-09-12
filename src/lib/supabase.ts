@@ -14,6 +14,7 @@ import {
 import { MOCK_CAMPAIGN_DATA } from '../data/mockCampaigns';
 import { INITIAL_MOCK_CALENDAR } from '../data/mockCalendar';
 import { readJsonResponse } from './httpJson';
+import { scheduledAtIso } from '../../shared/calendarPublish';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -223,6 +224,12 @@ type CalendarRow = {
   assignee_id: string | null;
   assignee_name: string | null;
   assignee_craft: string | null;
+  scheduled_at?: string | null;
+  published_at?: string | null;
+  provider_post_id?: string | null;
+  provider_permalink?: string | null;
+  publish_error?: string | null;
+  publish_blocked?: boolean | null;
 };
 
 function mapProfile(row: ProfileRow): UserProfile {
@@ -321,6 +328,12 @@ function mapCalendarItem(row: CalendarRow): ContentCalendarItem {
     assigneeId: row.assignee_id || undefined,
     assigneeName: row.assignee_name || undefined,
     assigneeCraft: row.assignee_craft || undefined,
+    scheduledAt: row.scheduled_at || undefined,
+    publishedAt: row.published_at || undefined,
+    providerPostId: row.provider_post_id || undefined,
+    providerPermalink: row.provider_permalink || undefined,
+    publishError: row.publish_error || undefined,
+    publishBlocked: Boolean(row.publish_blocked),
   };
 }
 
@@ -403,6 +416,7 @@ function calendarToRow(item: ContentCalendarItem) {
     assignee_id: item.assigneeId ?? null,
     assignee_name: item.assigneeName ?? null,
     assignee_craft: item.assigneeCraft ?? null,
+    scheduled_at: item.scheduledAt || scheduledAtIso(item.date, item.time) || null,
   };
 }
 
