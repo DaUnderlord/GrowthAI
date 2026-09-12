@@ -142,10 +142,22 @@ async function main() {
   assert('OAuth postMessage uses opener origin', routes.includes('row.redirect_origin'));
   assert('OAuth state stores redirect_uri', routes.includes('redirect_uri: redirectUri'));
   assert('WhatsApp connect verifies against Meta Graph', read('server/meta/staffRoutes.ts').includes('verifyWhatsAppNumber'));
+  const providersSrc = read('server/social/providers.ts');
   assert(
     'Meta Insights requests one demographic breakdown at a time',
-    read('server/social/providers.ts').includes('breakdown=${breakdown}') &&
-      !read('server/social/providers.ts').includes('breakdown=age,gender')
+    providersSrc.includes('breakdown=${breakdown}') && !providersSrc.includes('breakdown=age,gender')
+  );
+  assert(
+    'Instagram demographics always send a documented timeframe',
+    providersSrc.includes('timeframe=this_month') &&
+      providersSrc.includes('timeframe=this_week') &&
+      !providersSrc.includes('metric_type=total_value&breakdown=')
+  );
+  assert(
+    'deprecated Page fan Insights metrics are not requested',
+    !providersSrc.includes('page_fans_gender_age') &&
+      !providersSrc.includes('page_fans_country') &&
+      !providersSrc.includes('audience_gender_age')
   );
   assert(
     'agency Meta login binds the named brand account, not the first Page',

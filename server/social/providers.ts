@@ -497,9 +497,27 @@ async function fetchMetaStats(platform: string, token: string, extras?: Record<s
     }
   }
 
+  const linkedIg = page?.instagram_business_account;
+  const igDemo = linkedIg?.id
+    ? await fetchInstagramDemographics(linkedIg.id, pageToken, Number(linkedIg.followers_count || 0))
+    : null;
+  const adsDemo = ads.adAccountId ? await fetchAdsDemographics(ads.adAccountId, token) : {};
+  const hasAudience = Boolean(
+    Object.keys(igDemo?.ageGender || {}).length || Object.keys(adsDemo.adsAgeGender || {}).length
+  );
+  console.info('[meta] facebook audience sources', {
+    pageId,
+    igId: linkedIg?.id || null,
+    igSegments: Object.keys(igDemo?.ageGender || {}).length,
+    adsSegments: Object.keys(adsDemo.adsAgeGender || {}).length,
+  });
   const demographics = {
-    ...(await fetchFacebookDemographics(pageId, pageToken)),
-    ...(ads.adAccountId ? await fetchAdsDemographics(ads.adAccountId, token) : {}),
+    ...(igDemo || {}),
+    ...adsDemo,
+    source: igDemo?.ageGender && Object.keys(igDemo.ageGender).length ? 'instagram_insights' : adsDemo.adsAgeGender && Object.keys(adsDemo.adsAgeGender).length ? 'meta_ads_insights' : 'facebook_page',
+    note: hasAudience
+      ? undefined
+      : 'Meta removed Page fan age/gender Insights. Audience comes from the linked Instagram professional account or Ads Insights. Connect Instagram or a Meta ad account for this brand.',
   };
   return {
     accountName: pageInfo.name || chosen.name,
@@ -587,7 +605,6 @@ async function fetchIgBreakdown(igId: string, token: string, metric: string, bre
   const queries = [
     `metric=${metric}&period=lifetime&metric_type=total_value&timeframe=this_month&breakdown=${breakdown}`,
     `metric=${metric}&period=lifetime&metric_type=total_value&timeframe=this_week&breakdown=${breakdown}`,
-    `metric=${metric}&period=lifetime&metric_type=total_value&breakdown=${breakdown}`,
   ];
   let lastError = '';
   for (const query of queries) {
@@ -625,20 +642,6 @@ async function fetchInstagramDemographics(igId: string, token: string, followers
     }
   }
 
-  if (!Object.keys(ageGender).length) {
-    const legacy = await jsonFetch(
-      `https://graph.facebook.com/v21.0/${igId}/insights?metric=audience_gender_age,audience_country,audience_city&period=lifetime&access_token=${encodeURIComponent(token)}`
-    ).catch((err: any) => {
-      lastError = err.message;
-      return { data: [] };
-    });
-    for (const metric of legacy.data || []) {
-      if (/country/i.test(metric.name || '')) collectBreakdown(metric, countries);
-      else if (/city/i.test(metric.name || '')) collectBreakdown(metric, cities);
-      else collectBreakdown(metric, ageGender);
-    }
-  }
-
   return {
     source: 'instagram_insights',
     ageGender,
@@ -650,30 +653,6 @@ async function fetchInstagramDemographics(igId: string, token: string, followers
         (followers > 0 && followers < 100
           ? 'Meta withholds follower age/gender until the professional account has at least 100 followers.'
           : 'Meta returned no age/gender for this professional account. Confirm instagram_manage_insights is granted and Insights is available in Meta Business Suite.'),
-  };
-}
-
-async function fetchFacebookDemographics(pageId: string, token: string) {
-  const insights = await jsonFetch(
-    `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_fans_gender_age,page_fans_country,page_fans_city&period=lifetime&access_token=${encodeURIComponent(token)}`
-  ).catch(() => ({ data: [] }));
-  const ageGender: Record<string, number> = {};
-  const countries: Record<string, number> = {};
-  const cities: Record<string, number> = {};
-  for (const metric of insights.data || []) {
-    const values = metric.values?.[0]?.value || {};
-    if (metric.name === 'page_fans_gender_age') Object.assign(ageGender, values);
-    if (metric.name === 'page_fans_country') Object.assign(countries, values);
-    if (metric.name === 'page_fans_city') Object.assign(cities, values);
-  }
-  return {
-    source: 'facebook_page_insights',
-    ageGender,
-    countries,
-    cities,
-    note: Object.keys(ageGender).length
-      ? undefined
-      : 'Meta returned no Page fan age/gender. Confirm this Business Page has Insights in Business Suite and pages_read_engagement on the login.',
   };
 }
 
