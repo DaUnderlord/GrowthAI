@@ -1,77 +1,30 @@
 import React, { useMemo } from 'react';
 import { Clock, Heart, ShoppingBag } from 'lucide-react';
-import { AudiencePersona, ClientProfile } from '../types';
+import { ClientProfile } from '../types';
+import { useLiveInsights } from '../lib/liveApi';
+import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
+import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
 
 interface AudienceDnaProps {
   client: ClientProfile;
 }
 
-function buildPersonasForClient(client: ClientProfile): AudiencePersona[] {
-  const connected = (client.platforms || []).filter((p) => p.connected);
-  const topPlatform = [...connected].sort((a, b) => b.followers - a.followers)[0];
-  const industry = client.industryLabel || client.industry;
-  const goal = client.primaryGoal || 'growth';
-
-  return [
-    {
-      id: `${client.id}-core`,
-      name: `${client.name} Core Buyers`,
-      segmentName: `Primary · ${industry}`,
-      percentage: 44,
-      ageRange: '25 - 40',
-      activeHours: '7:00 PM - 10:00 PM',
-      interests: [industry, goal.split('&')[0].trim(), topPlatform?.name || 'Social', 'Trust signals'].slice(0, 4),
-      buyingTriggers: [
-        `Proof tied to ${goal}`,
-        connected.length ? `Social proof on ${topPlatform?.name || 'connected channels'}` : 'Clear offer messaging',
-        'Low-friction CTA / booking path',
-      ],
-      preferredFormat: topPlatform?.id === 'tiktok' ? 'Short-form video & POV hooks' : 'Carousels + Reels with clear CTA',
-      sentimentScore: client.sentimentScore || 88,
-      purchasingPower: client.tier?.toLowerCase().includes('enterprise') ? 'High' : 'Medium',
-    },
-    {
-      id: `${client.id}-growth`,
-      name: 'High-Intent Explorers',
-      segmentName: 'Consideration stage',
-      percentage: 33,
-      ageRange: '22 - 35',
-      activeHours: '12:00 PM - 2:00 PM',
-      interests: ['Comparisons', 'How-to content', industry, 'Offers'],
-      buyingTriggers: ['Limited-time offers', 'Social comments / reviews', 'Demo or sample access'],
-      preferredFormat: 'Before/after + FAQ Stories',
-      sentimentScore: Math.max(70, (client.engagementHealth || 80) - 4),
-      purchasingPower: 'Medium',
-    },
-    {
-      id: `${client.id}-warm`,
-      name: 'Warm Retargetable Audience',
-      segmentName: 'Retention & upsell',
-      percentage: 23,
-      ageRange: '28 - 50',
-      activeHours: '8:00 AM - 9:30 AM',
-      interests: ['Loyalty perks', 'Community', industry, 'Product updates'],
-      buyingTriggers: ['Reminder sequences', 'Bundles', 'Referral incentives'],
-      preferredFormat: 'Email + DM sequences with social retargeting',
-      sentimentScore: client.conversionScore || 82,
-      purchasingPower: 'High',
-    },
-  ];
-}
-
 export const AudienceDnaView: React.FC<AudienceDnaProps> = ({ client }) => {
-  const personas = useMemo(() => buildPersonasForClient(client), [client]);
+  const { insights } = useLiveInsights(client.id);
+  const { t } = useWorkspaceLocale();
+  const personas = useMemo(
+    () => (insights?.personas?.length ? insights.personas : []),
+    [insights]
+  );
 
   return (
     <div className="space-y-6">
       <div className="surface-panel p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <p className="eyebrow-label">Audience DNA</p>
-            <h2 className="mt-1 text-2xl font-semibold text-white">Audience understanding without the clutter</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
-              Personas are derived from {client.name}&apos;s industry, goal, and connected platforms — not a static demo dataset.
-            </p>
+            <p className="eyebrow-label">{t('audience')}</p>
+            <h2 className="mt-1 text-2xl font-semibold text-white">{t('audience')}</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-400">{t('personasFromProvider')}</p>
           </div>
           <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100">
             Audience signals for {client.name}
@@ -80,6 +33,19 @@ export const AudienceDnaView: React.FC<AudienceDnaProps> = ({ client }) => {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
+        {personas.length === 0 && (
+          <div className="space-y-4 lg:col-span-3">
+            <ConnectAccountsPrompt client={client} needed={['meta', 'linkedin']} />
+            <div className="surface-panel space-y-2 p-6 text-sm text-slate-400">
+              <p>{t('audienceEmpty')}</p>
+              {(insights?.demographics?.notes || []).map((note) => (
+                <p key={note} className="text-xs text-amber-300">
+                  {note}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
         {personas.map((persona) => (
           <div key={persona.id} className="surface-panel space-y-4 p-5">
             <div className="flex items-start justify-between border-b border-white/10 pb-3">

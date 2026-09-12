@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, LogOut, User, Settings } from 'lucide-react';
 import { ClientProfile, UserProfile } from '../types';
 import { NAV_ICONS, NavIconId } from './BrandIcons';
+import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
 interface SidebarNavProps {
   activeView: string;
@@ -41,19 +42,21 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   setMobileOpen,
 }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const { t } = useWorkspaceLocale();
 
   const allNavItems: NavItem[] = [
-    { id: 'overview', label: 'Overview', helper: 'Today at a glance' },
-    { id: 'campaigns', label: 'Campaigns', helper: 'Objective-first planning' },
-    { id: 'calendar', label: 'Content Calendar', helper: 'Schedule and production' },
-    { id: 'whatsapp', label: 'WhatsApp Inbox', helper: 'Leads and conversations' },
-    { id: 'intelligence', label: 'Growth AI Suite', helper: 'Insights and generation' },
-    { id: 'attribution', label: 'Analytics', helper: 'Performance and revenue' },
-    { id: 'audience', label: 'Audience DNA', helper: 'Segments and triggers' },
-    { id: 'agency', label: 'Agency Hub', helper: 'Clients and social accounts' },
-    { id: 'invoices', label: 'Invoices', helper: 'Billing and payments' },
-    { id: 'team', label: 'Team', helper: 'Members and privileges' },
-    { id: 'settings', label: 'Settings', helper: 'Workspace preferences' },
+    { id: 'overview', label: t('overview'), helper: t('helper_overview') },
+    { id: 'campaigns', label: t('campaigns'), helper: t('helper_campaigns') },
+    { id: 'calendar', label: t('calendar'), helper: t('helper_calendar') },
+    { id: 'whatsapp', label: t('whatsapp'), helper: t('helper_whatsapp') },
+    { id: 'intelligence', label: t('intelligence'), helper: t('helper_intelligence') },
+    { id: 'attribution', label: t('attribution'), helper: t('helper_attribution') },
+    { id: 'audience', label: t('audience'), helper: t('helper_audience') },
+    { id: 'agency', label: t('agency'), helper: t('helper_agency') },
+    { id: 'invoices', label: t('invoices'), helper: t('helper_invoices') },
+    { id: 'team', label: t('team'), helper: t('helper_team') },
+    { id: 'settings', label: t('settings'), helper: t('helper_settings') },
+    { id: 'blueprint', label: t('blueprint'), helper: t('helper_blueprint') },
   ];
   const navItems = allNavItems.filter((item) => {
     if (!currentUser) return true;

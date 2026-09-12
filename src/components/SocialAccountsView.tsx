@@ -16,6 +16,10 @@ import {
 } from 'lucide-react';
 import { ClientProfile, ConnectedPlatform, PlatformType, UserProfile } from '../types';
 import { authFetch } from '../lib/authFetch';
+import { connectionsToPlatforms, oauthRedirectUri } from '../lib/liveApi';
+import { MetaOnboarding } from './MetaOnboarding';
+import { ProviderOnboarding, type ProviderFamily } from './ProviderOnboarding';
+import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
 
 interface SocialAccountsViewProps {
   client: ClientProfile;
@@ -37,32 +41,60 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   };
 
   // Handle Permanent Deletion of Social Media Handle (Requires can_delete_social_handle privilege)
-  const handleDeletePlatform = (id: string, name: string) => {
+  const handleDeletePlatform = async (id: string, name: string, connectionId?: string) => {
     if (currentUser && !currentUser.privileges.can_delete_social_handle) {
       setOauthError(`Access Denied: Your account role (${currentUser.role.toUpperCase()}) does not have the 'can_delete_social_handle' privilege. Please grant 'can_delete_social_handle' in Team & Access Rights.`);
       return;
     }
 
-    const updated = platforms.filter((p) => p.id !== id);
-    setPlatforms(updated);
-    onUpdatePlatforms(updated);
-    setDeletingId(null);
-    showToast(`Successfully deleted ${name} social handle for ${client.name}`);
+    try {
+      if (connectionId) {
+        const res = await authFetch(`/api/socials/connections/${encodeURIComponent(connectionId)}`, {
+          method: 'DELETE',
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Could not disconnect account.');
+      }
+      const updated = platforms.filter((p) => p.id !== id);
+      setPlatforms(updated);
+      onUpdatePlatforms(updated);
+      setDeletingId(null);
+      showToast(`Disconnected ${name} for ${client.name}`);
+    } catch (err: any) {
+      setOauthError(err.message || 'Could not disconnect account.');
+    }
   };
 
-  // Sync state whenever selected client or client.platforms updates
   useEffect(() => {
     setPlatforms(client.platforms);
   }, [client.id, client.platforms]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || !data.success) return;
+        const live = connectionsToPlatforms(data.connections || []);
+        if (live.length) {
+          setPlatforms(live);
+          onUpdatePlatforms(live);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [client.id]);
+
   // New account form state
   const [selectedChannel, setSelectedChannel] = useState<PlatformType>('instagram');
   const [accountHandle, setAccountHandle] = useState('');
-  const [initialFollowers, setInitialFollowers] = useState(15000);
   const [customAccessToken, setCustomAccessToken] = useState('');
   const [oauthAuthTab, setOauthAuthTab] = useState<'popup' | 'token' | 'guide'>('popup');
   const [isOauthLoggingIn, setIsOauthLoggingIn] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [pendingAssets, setPendingAssets] = useState<Array<{ id: string; name: string; kind: string; pageName?: string; followers?: number }>>([]);
 
   // Listen for OAuth Success postMessage from Popup window
   useEffect(() => {
@@ -71,73 +103,38 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
         return;
       }
 
+      if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setOauthError(event.data.error || 'OAuth failed');
+        setIsOauthLoggingIn(false);
+        return;
+      }
+
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
         const platformType = (event.data.platform || selectedChannel) as PlatformType;
-        const code = event.data.code;
 
         setIsOauthLoggingIn(true);
         try {
-          const res = await authFetch(`/api/auth/${platformType}/exchange-token`, {
-            method: 'POST',
-            body: JSON.stringify({
-              code,
-              accessToken: customAccessToken || undefined,
-              accountHandle: accountHandle || `@${platformType}_brand_official`,
-              initialFollowers,
-              growthRate: 0,
-            }),
-          });
-          const data = await res.json();
-          if (data.success) {
-            const channelNames: Record<PlatformType, string> = {
-              instagram: 'Instagram',
-              facebook: 'Facebook Page',
-              tiktok: 'TikTok',
-              linkedin: 'LinkedIn',
-              youtube: 'YouTube',
-              meta_ads: 'Meta Ads Manager',
-              google_analytics: 'Google Analytics 4',
-              whatsapp: 'WhatsApp Business',
-              google_ads: 'Google Ads',
-            };
-
-            const existingIdx = platforms.findIndex((p) => p.id === platformType);
-            let updated: ConnectedPlatform[];
-            if (existingIdx >= 0) {
-              updated = [...platforms];
-              updated[existingIdx] = {
-                ...updated[existingIdx],
-                connected: true,
-                accountName: data.accountName,
-                followers: data.followers,
-                growthRate: data.growthRate,
-                healthScore: data.healthScore,
-                lastSync: 'Just now (OAuth Verified)',
-                apiStatus: 'live',
-                oauthTokenMasked: data.oauthTokenMasked,
-                livePingMs: data.livePingMs,
-              };
+          const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
+          const payload = await list.json();
+          if (payload.success) {
+            const live = connectionsToPlatforms(payload.connections || []);
+            setPlatforms(live);
+            onUpdatePlatforms(live);
+            if (event.data.needsSelection?.length) {
+              setPendingAssets(event.data.needsSelection);
+              setShowConnectModal(true);
+              setOauthError('This Meta login can access multiple brand accounts. Choose the one for this client.');
             } else {
-              const newPlatform: ConnectedPlatform = {
-                id: platformType,
-                name: channelNames[platformType] || platformType,
-                icon: 'Globe',
-                connected: true,
-                accountName: data.accountName,
-                followers: data.followers,
-                growthRate: data.growthRate,
-                lastSync: 'Just now (OAuth Verified)',
-                healthScore: data.healthScore,
-                apiStatus: 'live',
-                oauthTokenMasked: data.oauthTokenMasked,
-                livePingMs: data.livePingMs,
-              };
-              updated = [newPlatform, ...platforms];
+              setShowConnectModal(false);
+              showToast(
+                event.data.warning
+                  ? `${event.data.accountName || platformType} signed in, but sync needs attention`
+                  : `${event.data.accountName || platformType} connected`
+              );
+              if (event.data.warning) setOauthError(event.data.warning);
             }
-
-            setPlatforms(updated);
-            onUpdatePlatforms(updated);
-            setShowConnectModal(false);
+          } else {
+            setOauthError(payload.error || 'Connected, but could not refresh accounts.');
           }
         } catch (err: any) {
           console.error("OAuth token exchange error:", err);
@@ -157,71 +154,33 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     setIsOauthLoggingIn(true);
     setOauthError(null);
     try {
-      const res = await authFetch(`/api/auth/${selectedChannel}/exchange-token`, {
+      if (!customAccessToken.trim()) {
+        setOauthError('Paste a real provider access token, or use Sign in with provider.');
+        setIsOauthLoggingIn(false);
+        return;
+      }
+      const res = await authFetch('/api/socials/connect', {
         method: 'POST',
         body: JSON.stringify({
-          accessToken: customAccessToken || undefined,
-          accountHandle: accountHandle || `@${selectedChannel}_official`,
-          initialFollowers,
-          growthRate: 0,
+          clientId: client.id,
+          platform: selectedChannel,
+          accessToken: customAccessToken.trim(),
         }),
       });
       const data = await res.json();
       if (data.success) {
-        const channelNames: Record<PlatformType, string> = {
-          instagram: 'Instagram',
-          facebook: 'Facebook Page',
-          tiktok: 'TikTok',
-          linkedin: 'LinkedIn',
-          youtube: 'YouTube',
-          meta_ads: 'Meta Ads Manager',
-          google_analytics: 'Google Analytics 4',
-          whatsapp: 'WhatsApp Business',
-          google_ads: 'Google Ads',
-        };
-
-        const existingIdx = platforms.findIndex((p) => p.id === selectedChannel);
-        let updated: ConnectedPlatform[];
-        if (existingIdx >= 0) {
-          updated = [...platforms];
-          updated[existingIdx] = {
-            ...updated[existingIdx],
-            connected: true,
-            accountName: data.accountName,
-            followers: data.followers || initialFollowers,
-            growthRate: data.growthRate,
-            healthScore: data.healthScore,
-            lastSync: 'Just now (OAuth Verified)',
-            apiStatus: 'live',
-            oauthTokenMasked: data.oauthTokenMasked,
-            livePingMs: data.livePingMs,
-          };
-        } else {
-          const newPlatform: ConnectedPlatform = {
-            id: selectedChannel,
-            name: channelNames[selectedChannel] || selectedChannel,
-            icon: 'Globe',
-            connected: true,
-            accountName: data.accountName,
-            followers: data.followers || initialFollowers,
-            growthRate: data.growthRate,
-            lastSync: 'Just now (OAuth Verified)',
-            healthScore: data.healthScore,
-            apiStatus: 'live',
-            oauthTokenMasked: data.oauthTokenMasked,
-            livePingMs: data.livePingMs,
-          };
-          updated = [newPlatform, ...platforms];
-        }
-
-        setPlatforms(updated);
-        onUpdatePlatforms(updated);
+        const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
+        const payload = await list.json();
+        const live = connectionsToPlatforms(payload.connections || []);
+        setPlatforms(live);
+        onUpdatePlatforms(live);
         setShowConnectModal(false);
+        setCustomAccessToken('');
       } else {
-        setOauthError('Direct OAuth verification failed');
+        setOauthError(data.error || 'Token was rejected by the provider.');
       }
     } catch (err: any) {
-      setOauthError(err.message || 'Error executing direct OAuth authorization');
+      setOauthError(err.message || 'Error verifying access token');
     } finally {
       setIsOauthLoggingIn(false);
     }
@@ -230,8 +189,8 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     setIsOauthLoggingIn(true);
     setOauthError(null);
     try {
-      const redirectUri = `${window.location.origin}/auth/callback`;
-      const res = await fetch(`/api/auth/${selectedChannel}/url?redirectUri=${encodeURIComponent(redirectUri)}`);
+      const redirectUri = oauthRedirectUri();
+      const res = await authFetch(`/api/auth/${selectedChannel}/url?clientId=${encodeURIComponent(client.id)}&redirectUri=${encodeURIComponent(redirectUri)}`);
       const data = await res.json();
 
       if (data.url) {
@@ -251,7 +210,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
           setIsOauthLoggingIn(false);
         }
       } else {
-        setOauthError('Failed to generate OAuth Authorization URL');
+        setOauthError(data.error || 'Provider OAuth is not configured on the server.');
         setIsOauthLoggingIn(false);
       }
     } catch (err: any) {
@@ -264,34 +223,28 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     setSyncingId(id);
     try {
       const platform = platforms.find((p) => p.id === id);
-      const res = await authFetch('/api/socials/sync-live', {
+      const res = await authFetch('/api/socials/sync', {
         method: 'POST',
         body: JSON.stringify({
+          clientId: client.id,
           platform: platformType,
-          accountHandle: handle,
-          followers: platform?.followers ?? 0,
-          growthRate: platform?.growthRate ?? 0,
-          accessToken: platform?.oauthTokenMasked,
         }),
       });
       const data = await res.json();
-      if (data.success && data.stats) {
-        setPlatforms((prev) =>
-          prev.map((p) =>
-            p.id === id
-              ? {
-                  ...p,
-                  lastSync: 'Just now (Live API)',
-                  healthScore: 99,
-                  followers: data.stats.followers || p.followers,
-                  growthRate: data.stats.growthRate || p.growthRate,
-                  apiStatus: 'live',
-                  rateLimitQuota: data.stats.rateLimitQuota || '9,500 / 10,000',
-                  livePingMs: data.livePingMs || 18,
-                }
-              : p
-          )
-        );
+      if (data.success) {
+        const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
+        const payload = await list.json();
+        const live = connectionsToPlatforms(payload.connections || []);
+        setPlatforms(live);
+        onUpdatePlatforms(live);
+        const failed = live.filter((row) => row.lastError);
+        if (failed.length) {
+          setOauthError(failed.map((row) => `${row.name}: ${row.lastError}`).join(' · '));
+        } else {
+          showToast('Live metrics synced from the provider API');
+        }
+      } else {
+        setOauthError(data.error || 'Sync failed');
       }
     } catch (err) {
       console.error("Failed to sync live API:", err);
@@ -301,62 +254,47 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   };
 
   const handleToggleConnection = (id: string) => {
-    const updated = platforms.map((p) =>
-      p.id === id ? { ...p, connected: !p.connected } : p
-    );
-    setPlatforms(updated);
-    onUpdatePlatforms(updated);
+    const platform = platforms.find((p) => p.id === id);
+    if (platform?.connected) {
+      void handleDeletePlatform(id, platform.name, platform.connectionId);
+      return;
+    }
+    setShowConnectModal(true);
+    setSelectedChannel(id);
+  };
+
+  const handleBindAsset = async (externalId: string) => {
+    setIsOauthLoggingIn(true);
+    setOauthError(null);
+    try {
+      const res = await authFetch('/api/socials/bind', {
+        method: 'POST',
+        body: JSON.stringify({ clientId: client.id, platform: selectedChannel, externalId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Could not bind that brand account.');
+      const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
+      const payload = await list.json();
+      const live = connectionsToPlatforms(payload.connections || []);
+      setPlatforms(live);
+      onUpdatePlatforms(live);
+      setPendingAssets([]);
+      setShowConnectModal(false);
+      showToast('Brand account linked. Audience will fill after Insights sync.');
+    } catch (err: any) {
+      setOauthError(err.message);
+    } finally {
+      setIsOauthLoggingIn(false);
+    }
   };
 
   const handleConnectNewAccount = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accountHandle) return;
-
-    const channelNames: Record<PlatformType, string> = {
-      instagram: 'Instagram',
-      facebook: 'Facebook Page',
-      tiktok: 'TikTok',
-      linkedin: 'LinkedIn',
-      youtube: 'YouTube',
-      meta_ads: 'Meta Ads Manager',
-      google_analytics: 'Google Analytics 4',
-      whatsapp: 'WhatsApp Business',
-      google_ads: 'Google Ads',
-    };
-
-    const formattedHandle = accountHandle.startsWith('@') ? accountHandle : `@${accountHandle}`;
-    const existingIndex = platforms.findIndex((p) => p.id === selectedChannel);
-
-    let updated: ConnectedPlatform[];
-    if (existingIndex >= 0) {
-      updated = [...platforms];
-      updated[existingIndex] = {
-        ...updated[existingIndex],
-        connected: true,
-        accountName: formattedHandle,
-        followers: Number(initialFollowers) || updated[existingIndex].followers,
-        lastSync: 'Just now',
-        healthScore: 98,
-      };
-    } else {
-      const newPlatform: ConnectedPlatform = {
-        id: selectedChannel,
-        name: channelNames[selectedChannel] || selectedChannel,
-        icon: 'Globe',
-        connected: true,
-        accountName: formattedHandle,
-        followers: Number(initialFollowers),
-        growthRate: 15.4,
-        lastSync: 'Just now',
-        healthScore: 96,
-      };
-      updated = [newPlatform, ...platforms];
+    if (oauthAuthTab === 'token') {
+      void handleDirectOAuthConnect();
+      return;
     }
-
-    setPlatforms(updated);
-    onUpdatePlatforms(updated);
-    setShowConnectModal(false);
-    setAccountHandle('');
+    void handleTriggerOauthPopup();
   };
 
   return (
@@ -367,6 +305,9 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
           <span>{toastMessage}</span>
         </div>
       )}
+
+      <ConnectAccountsPrompt client={client} />
+      <MetaOnboarding client={client} compact />
 
       {/* Header Banner */}
       <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -434,13 +375,18 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
               </div>
 
               {/* Sync Health & Action Footer */}
+              {(p.lastError || p.audienceNote) && (
+                <p className="text-[11px] leading-relaxed text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-2">
+                  {p.lastError || p.audienceNote}
+                </p>
+              )}
+
               {p.connected && (
-                <div className="flex items-center justify-between text-[10px] text-slate-400 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800 font-mono">
-                  <span className="flex items-center gap-1 text-emerald-400">
-                    <Zap className="w-3 h-3 text-emerald-400 animate-pulse" />
-                    <span>REST API {p.livePingMs || 18}ms</span>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                  <span className={`flex items-center gap-1 ${p.lastError ? 'text-amber-300' : 'text-emerald-400'}`}>
+                    <Zap className="w-3 h-3" />
+                    <span>Provider API {p.lastError ? 'error' : p.apiStatus === 'live' ? 'connected' : p.apiStatus || 'unknown'}</span>
                   </span>
-                  <span className="text-slate-400">Quota: {p.rateLimitQuota || '9,840/10k'}</span>
                 </div>
               )}
 
@@ -475,7 +421,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                   {deletingId === p.id ? (
                     <div className="flex items-center gap-1.5 animate-fadeIn">
                       <button
-                        onClick={() => handleDeletePlatform(p.id, p.name)}
+                        onClick={() => void handleDeletePlatform(p.id, p.name, p.connectionId)}
                         className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] shadow-md cursor-pointer transition-all flex items-center gap-1"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -564,9 +510,41 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
               </div>
             )}
 
+            {pendingAssets.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-cyan-500/30 bg-slate-950 p-3">
+                <p className="text-xs font-semibold text-cyan-200">Select this brand’s professional account</p>
+                {pendingAssets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    disabled={isOauthLoggingIn}
+                    onClick={() => void handleBindAsset(asset.id)}
+                    className="flex w-full items-center justify-between rounded-lg border border-slate-800 px-3 py-2 text-left text-xs text-slate-200 hover:border-cyan-500/40"
+                  >
+                    <span>
+                      <span className="font-semibold text-white">{asset.name}</span>
+                      {asset.pageName ? <span className="ml-2 text-slate-500">· {asset.pageName}</span> : null}
+                    </span>
+                    <span className="text-[10px] uppercase text-slate-500">{asset.kind}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Select Network / Channel</label>
+                {(() => {
+                  const family: ProviderFamily =
+                    selectedChannel === 'tiktok'
+                      ? 'tiktok'
+                      : selectedChannel === 'linkedin'
+                        ? 'linkedin'
+                        : selectedChannel === 'youtube' || selectedChannel === 'google_analytics' || selectedChannel === 'google_ads'
+                          ? 'google'
+                          : 'meta';
+                  return <ProviderOnboarding family={family} client={client} compact />;
+                })()}
                 <select
                   value={selectedChannel}
                   onChange={(e) => setSelectedChannel(e.target.value as PlatformType)}
@@ -603,43 +581,28 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                       OAuth 2.0 Official Provider Authorization
                     </span>
                     <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Connect <span className="text-cyan-300 font-bold capitalize">{selectedChannel.replace('_', ' ')}</span> via official OAuth Graph API permissions.
+                      Save your {selectedChannel.replace('_', ' ')} app credentials above (if you have not), then sign in. GrowthOS uses your app, not a shared developer account.
                     </p>
-                    <div className="text-[10px] text-slate-400 font-mono bg-slate-900 p-2 rounded-lg border border-slate-800">
-                      Requested Scopes: {selectedChannel.includes('google') || selectedChannel === 'youtube' ? 'https://www.googleapis.com/auth/youtube.readonly' : selectedChannel === 'linkedin' ? 'r_liteprofile, w_member_social' : 'instagram_basic, instagram_content_publish'}
-                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDirectOAuthConnect}
-                      disabled={isOauthLoggingIn}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all text-xs"
-                    >
-                      {isOauthLoggingIn ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-emerald-200" />
-                          <span>Authorizing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                          <span>Instant OAuth Connect (1-Click)</span>
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleTriggerOauthPopup}
-                      disabled={isOauthLoggingIn}
-                      className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold rounded-xl border border-cyan-500/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all text-xs"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Open Popup Consent Window</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTriggerOauthPopup}
+                    disabled={isOauthLoggingIn}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all text-xs"
+                  >
+                    {isOauthLoggingIn ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Opening provider login…</span>
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Sign in with provider</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
 
@@ -657,15 +620,9 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Current Baseline Followers</label>
-                    <input
-                      type="number"
-                      value={initialFollowers}
-                      onChange={(e) => setInitialFollowers(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    />
-                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Token is validated against the provider API. Followers and spend come from that API, not this form.
+                  </p>
 
                   <button
                     type="submit"
@@ -680,14 +637,15 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
               {oauthAuthTab === 'guide' && (
                 <div className="space-y-2 p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-300">
                   <span className="font-bold text-white block text-xs">📋 OAuth Developer Redirect Setup:</span>
-                  <p>When creating your Meta Developer App, Google Cloud Console Credentials, or LinkedIn Developer App, add this exact Redirect URI:</p>
+                  <p>Add this redirect URL in your own Meta, Google, TikTok, or LinkedIn app. The exact URL is also shown in Settings → Integrations after you save the app.</p>
                   <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 font-mono text-cyan-300 text-[10px] break-all select-all">
-                    {window.location.origin}/auth/callback
+                    {oauthRedirectUri()}
                   </div>
                   <ul className="list-disc pl-4 space-y-1 text-slate-400 text-[10px]">
-                    <li>Meta/Instagram: Add Instagram Graph API product in Meta Developers.</li>
-                    <li>Google/YouTube: Enable YouTube Data API v3 in Google Cloud Console.</li>
-                    <li>LinkedIn: Enable Sign In with LinkedIn & Share on LinkedIn permissions.</li>
+                    <li>You paste Client ID and Secret in GrowthOS. Do not ask the GrowthOS developer for keys.</li>
+                    <li>Meta: Facebook Login + Instagram + WhatsApp + Marketing API as needed.</li>
+                    <li>Google: YouTube Data API, Analytics Data API, and Ads API if you use ads.</li>
+                    <li>TikTok: Login Kit and user stats. LinkedIn: Sign In + organization products for page insights.</li>
                   </ul>
                 </div>
               )}

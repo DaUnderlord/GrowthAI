@@ -104,7 +104,7 @@ export class AiServiceError extends Error {
 export async function generateGrowthAI(
   prompt: string,
   systemInstruction?: string,
-  options?: { temperature?: number; timeoutMs?: number; model?: string }
+  options?: { temperature?: number; timeoutMs?: number; model?: string; tools?: unknown[] }
 ): Promise<string> {
   const client = getAiClient();
   if (!client) {
@@ -127,6 +127,7 @@ export async function generateGrowthAI(
     temperature,
     timeoutMs,
     model: options?.model,
+    tools: options?.tools,
   });
 }
 
@@ -137,6 +138,7 @@ export async function generateGeminiContent(opts: {
   temperature?: number;
   timeoutMs?: number;
   model?: string;
+  tools?: unknown[];
 }): Promise<string> {
   const temperature = opts.temperature ?? 0.7;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -152,6 +154,7 @@ export async function generateGeminiContent(opts: {
           temperature,
           ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
           thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+          ...(opts.tools?.length ? { tools: opts.tools as any } : {}),
         },
       });
       const text = (response.text || '').trim();

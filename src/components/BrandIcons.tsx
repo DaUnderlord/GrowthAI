@@ -147,6 +147,7 @@ export const NAV_ICONS = {
   invoices: InvoicesIcon,
   team: TeamIcon,
   settings: SettingsIcon,
+  blueprint: SettingsIcon,
 } as const;
 
 export type NavIconId = keyof typeof NAV_ICONS;

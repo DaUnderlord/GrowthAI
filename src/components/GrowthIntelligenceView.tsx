@@ -1,20 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
-import { ClientProfile, ContentCalendarItem, PostPerformance } from '../types';
+import { ClientProfile, PostPerformance } from '../types';
 import { MultiAgentLabView } from './MultiAgentLabView';
 import { PredictionEngineView } from './PredictionEngineView';
 import { ContentOptimizerView } from './ContentOptimizerView';
 import { CompetitorIntelligenceView } from './CompetitorIntelligenceView';
 import { AutonomousReboostView } from './AutonomousReboostView';
 import { callGrowthAi } from '../lib/aiApi';
-import { buildPostSignals } from '../lib/clientInsights';
-import { subscribeToCalendarItems } from '../lib/supabase';
+import { useLiveInsights } from '../lib/liveApi';
+import { CreativeLabView } from './CreativeLabView';
 
 interface GrowthIntelligenceProps {
   client: ClientProfile;
 }
 
-type SuiteTab = 'signals' | 'agents' | 'predict' | 'optimize' | 'competitors' | 'reboost';
+type SuiteTab = 'signals' | 'agents' | 'predict' | 'optimize' | 'competitors' | 'reboost' | 'creative';
 
 function buildLocalInsights(post: PostPerformance, client: ClientProfile): string {
   const saveRate = post.impressions ? ((post.saves / post.impressions) * 100).toFixed(1) : '0';
@@ -57,15 +57,11 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
   const [insightText, setInsightText] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState<string | null>(null);
-  const [calendarItems, setCalendarItems] = useState<ContentCalendarItem[]>([]);
-
-  useEffect(() => {
-    return subscribeToCalendarItems(client.id, setCalendarItems);
-  }, [client.id]);
+  const { insights } = useLiveInsights(client.id);
 
   const posts = useMemo(
-    () => buildPostSignals(client, calendarItems),
-    [client, calendarItems]
+    () => (insights?.posts?.length ? insights.posts : []),
+    [insights]
   );
 
   const aggregateReach = useMemo(
@@ -85,6 +81,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
     { id: 'optimize', label: 'Optimize' },
     { id: 'competitors', label: 'Competitors' },
     { id: 'reboost', label: 'Reboost' },
+    { id: 'creative', label: 'Creative' },
   ];
 
   const selectedPost = useMemo(
@@ -358,6 +355,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
       {tab === 'optimize' && <ContentOptimizerView client={client} />}
       {tab === 'competitors' && <CompetitorIntelligenceView client={client} />}
       {tab === 'reboost' && <AutonomousReboostView client={client} />}
+      {tab === 'creative' && <CreativeLabView client={client} />}
     </div>
   );
 };

@@ -77,6 +77,7 @@ export type PlatformType =
 
 export interface ConnectedPlatform {
   id: PlatformType;
+  connectionId?: string;
   name: string;
   icon: string;
   connected: boolean;
@@ -86,6 +87,8 @@ export interface ConnectedPlatform {
   lastSync: string;
   healthScore: number;
   apiStatus?: 'live' | 'syncing' | 'offline' | 'needs_auth';
+  lastError?: string;
+  audienceNote?: string;
   rateLimitQuota?: string;
   oauthTokenMasked?: string;
   livePingMs?: number;

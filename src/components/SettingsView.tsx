@@ -7,12 +7,18 @@ import {
   ShieldCheck,
   Zap,
 } from 'lucide-react';
-import { CurrencyCode, UserProfile } from '../types';
+import { ClientProfile, CurrencyCode, UserProfile } from '../types';
 import { CURRENCIES } from '../utils/currency';
-import { resetPasswordForEmail, saveWorkspacePreferences } from '../lib/supabase';
+import { resetPasswordForEmail, saveWorkspacePreferences, supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authFetch';
+import { IANA_TIMEZONES } from '../lib/liveApi';
+import { MetaOnboarding } from './MetaOnboarding';
+import { ProviderOnboarding } from './ProviderOnboarding';
+import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
 interface SettingsViewProps {
   currentUser: UserProfile;
+  selectedClient?: ClientProfile | null;
   currency: CurrencyCode;
   setCurrency: (currency: CurrencyCode) => void;
   whiteLabelMode: boolean;
@@ -22,26 +28,36 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   currentUser,
+  selectedClient,
   currency,
   setCurrency,
   whiteLabelMode,
   setWhiteLabelMode,
   onUserUpdated,
 }) => {
+  const { t } = useWorkspaceLocale();
   const prefs = currentUser.preferences || {};
-  const [activeTab, setActiveTab] = useState<'general' | 'preferences' | 'security'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'preferences' | 'security' | 'integrations' | 'domain'>('general');
+  const [mfaQr, setMfaQr] = useState<string | null>(null);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaStatus, setMfaStatus] = useState<string | null>(null);
+  const [domain, setDomain] = useState('');
+  const [domainMsg, setDomainMsg] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState(currentUser.companyName || 'GrowthOS Agency');
   const [website, setWebsite] = useState(currentUser.website || prefs.website || 'https://growthos.ai');
-  const [language, setLanguage] = useState(prefs.language || 'English (US)');
-  const [timeZone, setTimeZone] = useState(prefs.timeZone || 'UTC+0 (WAT / London)');
+  const [language, setLanguage] = useState(prefs.language || 'en');
+  const [timeZone, setTimeZone] = useState(prefs.timeZone || 'Africa/Lagos');
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const tabs = [
-    { id: 'general' as const, label: 'General', icon: Building2 },
-    { id: 'preferences' as const, label: 'Preferences', icon: DollarSign },
-    { id: 'security' as const, label: 'Security', icon: Lock },
+    { id: 'general' as const, label: t('tab_general'), icon: Building2 },
+    { id: 'preferences' as const, label: t('tab_preferences'), icon: DollarSign },
+    { id: 'security' as const, label: t('tab_security'), icon: Lock },
+    { id: 'integrations' as const, label: t('tab_integrations'), icon: Zap },
+    { id: 'domain' as const, label: t('tab_domain'), icon: Building2 },
   ];
 
   const handleSaveSettings = async () => {
@@ -71,16 +87,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="surface-panel p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
-            <p className="eyebrow-label">Settings</p>
-            <h2 className="mt-1 text-2xl font-semibold text-white">Workspace preferences</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Keep settings simple: brand, currency, and account security.
-            </p>
+            <p className="eyebrow-label">{t('settings')}</p>
+            <h2 className="mt-1 text-2xl font-semibold text-white">{t('workspacePreferences')}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">{t('settingsIntro')}</p>
           </div>
           <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto">
             <button onClick={handleSaveSettings} className="primary-button w-full justify-center sm:w-auto">
               {savedNotice ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Zap className="h-4 w-4" />}
-              <span>{savedNotice ? 'Saved' : 'Save changes'}</span>
+              <span>{savedNotice ? t('saved') : t('saveChanges')}</span>
             </button>
             {saveError && <p className="text-center text-[11px] text-rose-300">{saveError}</p>}
           </div>
@@ -201,16 +215,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs text-slate-400">Language</label>
+              <label className="mb-1 block text-xs text-slate-400">{t('language')}</label>
               <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
                 className="w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-xs text-white"
               >
-                <option>English (US)</option>
-                <option>French (Français)</option>
-                <option>Spanish (Español)</option>
-                <option>German (Deutsch)</option>
+                <option value="en">English (US)</option>
+                <option value="fr">French (Français)</option>
+                <option value="es">Spanish (Español)</option>
+                <option value="de">German (Deutsch)</option>
               </select>
             </div>
             <div>
@@ -220,11 +234,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e) => setTimeZone(e.target.value)}
                 className="w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-xs text-white"
               >
-                <option>UTC+0 (WAT / London)</option>
-                <option>UTC-5 (EST / New York)</option>
-                <option>UTC-8 (PST / San Francisco)</option>
-                <option>UTC+1 (CET / Paris)</option>
-                <option>UTC+4 (GST / Dubai)</option>
+                {IANA_TIMEZONES.map((z) => (
+                  <option key={z.value} value={z.value}>{z.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -281,6 +293,109 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'security' && (
+        <div className="surface-panel mt-4 space-y-3 p-5">
+          <h3 className="text-sm font-semibold text-white">Authenticator app (TOTP)</h3>
+          <p className="text-xs text-slate-400">Uses Supabase MFA. Scan the QR, then confirm the 6-digit code.</p>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={async () => {
+              setMfaStatus(null);
+              const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+              if (error) {
+                setMfaStatus(error.message);
+                return;
+              }
+              setMfaFactorId(data.id);
+              setMfaQr(data.totp.qr_code);
+            }}
+          >
+            Start 2FA enrollment
+          </button>
+          {mfaQr && <img src={mfaQr} alt="MFA QR" className="h-40 w-40 rounded-xl bg-white p-2" />}
+          {mfaFactorId && (
+            <div className="flex gap-2">
+              <input
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                placeholder="123456"
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+              />
+              <button
+                type="button"
+                className="primary-button"
+                onClick={async () => {
+                  const challenge = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+                  if (challenge.error) {
+                    setMfaStatus(challenge.error.message);
+                    return;
+                  }
+                  const verified = await supabase.auth.mfa.verify({
+                    factorId: mfaFactorId,
+                    challengeId: challenge.data.id,
+                    code: mfaCode,
+                  });
+                  setMfaStatus(verified.error ? verified.error.message : 'Two-factor authentication is on.');
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          )}
+          {mfaStatus && <p className="text-xs text-cyan-200">{mfaStatus}</p>}
+        </div>
+      )}
+
+      {activeTab === 'integrations' && (
+        <div className="space-y-4">
+          <MetaOnboarding client={selectedClient} />
+          <ProviderOnboarding family="google" client={selectedClient} />
+          <ProviderOnboarding family="tiktok" client={selectedClient} />
+          <ProviderOnboarding family="linkedin" client={selectedClient} />
+        </div>
+      )}
+
+      {activeTab === 'domain' && (
+        <div className="surface-panel space-y-3 p-5">
+          <h3 className="text-sm font-semibold text-white">White-label domain</h3>
+          <p className="text-xs text-slate-400">
+            Point a CNAME to cname.vercel-dns.com and add a TXT record. Optional VERCEL_TOKEN adds the domain on Vercel.
+          </p>
+          <input
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            placeholder="app.youragency.com"
+            className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={async () => {
+                const res = await authFetch('/api/org/domain', { method: 'POST', body: JSON.stringify({ domain }) });
+                const data = await res.json();
+                setDomainMsg(data.error || `Add TXT ${data.txtRecord?.value} on ${data.domain}`);
+              }}
+            >
+              Save domain
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={async () => {
+                const res = await authFetch('/api/org/domain/verify', { method: 'POST', body: JSON.stringify({}) });
+                const data = await res.json();
+                setDomainMsg(data.verified ? 'Domain verified.' : data.error || 'TXT record not found yet.');
+              }}
+            >
+              Verify DNS
+            </button>
+          </div>
+          {domainMsg && <p className="text-xs text-cyan-200">{domainMsg}</p>}
         </div>
       )}
     </div>

@@ -15,6 +15,7 @@ import {
 import { UserProfile, UserRole, UserPrivileges } from '../types';
 import { DEFAULT_ROLE_PRIVILEGES } from '../data/mockUsers';
 import { inviteTeamMember } from '../lib/supabase';
+import { authFetch } from '../lib/authFetch';
 
 interface TeamPrivilegesModalProps {
   isOpen: boolean;
@@ -126,10 +127,25 @@ export const TeamPrivilegesModal: React.FC<TeamPrivilegesModalProps> = ({
         invitedBy: currentUser.id,
         orgId: currentUser.orgId,
       });
+      let emailed = false;
+      try {
+        const mail = await authFetch('/api/team/invite', {
+          method: 'POST',
+          body: JSON.stringify({ email: newEmail, name: newName }),
+        });
+        const payload = await mail.json();
+        emailed = Boolean(payload.emailed);
+      } catch {
+        emailed = false;
+      }
       setShowAddUserModal(false);
       setNewName('');
       setNewEmail('');
-      showToast(`Invite saved for ${newEmail}. They join by signing up with that email.`);
+      showToast(
+        emailed
+          ? `Invite emailed to ${newEmail}.`
+          : `Invite saved for ${newEmail}. Set RESEND_API_KEY to send email automatically.`
+      );
     } catch (err: any) {
       showToast(err.message || 'Invite failed.');
     }

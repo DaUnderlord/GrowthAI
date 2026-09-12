@@ -20,6 +20,10 @@ import {
   subscribeToConversationMessages,
   suggestWhatsAppReply,
 } from '../lib/whatsapp';
+import { MetaOnboarding } from './MetaOnboarding';
+import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { authFetch } from '../lib/authFetch';
+import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
 interface WhatsAppInboxViewProps {
   client: ClientProfile;
@@ -52,7 +56,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [stageBusy, setStageBusy] = useState(false);
 
-  const [showConnect, setShowConnect] = useState(false);
+  const { t } = useWorkspaceLocale();
+  const [showConnect, setShowConnect] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [hasAccount, setHasAccount] = useState(false);
   const [phoneNumberId, setPhoneNumberId] = useState('');
@@ -61,6 +66,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [wabaId, setWabaId] = useState('');
   const [connectBusy, setConnectBusy] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [verifyToken, setVerifyToken] = useState('');
   const [filterStage, setFilterStage] = useState<'all' | LeadStage>('all');
 
   const selected = useMemo(
@@ -75,11 +81,21 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         if (cancelled) return;
         setWebhookUrl(url);
         const forClient = accounts.filter((a) => a.clientId === client.id);
-        setHasAccount(forClient.some((a) => a.status === 'connected') || accounts.length > 0);
+        const connected = forClient.some((a) => a.status === 'connected') || accounts.length > 0;
+        setHasAccount(connected);
+        if (connected) setShowConnect(false);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
       });
+    void authFetch('/api/org/meta')
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || !data.success) return;
+        if (data.webhookUrl) setWebhookUrl(data.webhookUrl);
+        if (data.verifyToken) setVerifyToken(data.verifyToken);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -208,16 +224,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     <div className="fade-rise space-y-4">
       <div className="surface-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
         <div>
-          <p className="eyebrow-label">WhatsApp Sales</p>
-          <h2 className="font-display mt-1 text-3xl font-medium text-white">Inbox · {client.name}</h2>
-          <p className="mt-2 text-sm text-slate-400">
-            Official Cloud API conversations, lead stages, and AI reply suggestions.
-          </p>
+          <p className="eyebrow-label">{t('whatsapp')}</p>
+          <h2 className="font-display mt-1 text-3xl font-medium text-white">{t('whatsappInbox')} · {client.name}</h2>
+          <p className="mt-2 text-sm text-slate-400">{t('whatsappIntro')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="secondary-button" onClick={() => setShowConnect((v) => !v)}>
             <Wifi className="h-4 w-4" />
-            <span>{hasAccount ? 'Connection' : 'Connect WhatsApp'}</span>
+            <span>{hasAccount ? t('connect') : t('connectWhatsApp')}</span>
           </button>
         </div>
       </div>
@@ -226,6 +240,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
           {error}
         </div>
+      )}
+
+      {!hasAccount && (
+        <>
+          <ConnectAccountsPrompt client={client} needed={['meta']} />
+          <p className="text-sm text-slate-400">{t('noWhatsAppYet')}</p>
+          <MetaOnboarding client={client} />
+        </>
       )}
 
       {showConnect && (
@@ -260,7 +282,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               </button>
             </div>
             <p className="mt-2 text-[11px] text-slate-500">
-              Verify token must match <code className="text-cyan-200">META_WEBHOOK_VERIFY_TOKEN</code> in server env.
+              Use this verify token in the Meta webhook settings
+              {verifyToken ? (
+                <>
+                  : <code className="text-cyan-200">{verifyToken}</code>
+                </>
+              ) : (
+                '. Save your Meta app in Agency Hub → Connect apps so GrowthOS can show the verify token from your workspace.'
+              )}
             </p>
           </div>
 

@@ -14,6 +14,7 @@ import {
   subscribeToCampaigns,
 } from '../lib/supabase';
 import { callGrowthAi } from '../lib/aiApi';
+import { authFetch } from '../lib/authFetch';
 
 interface CampaignManagerProps {
   client: ClientProfile;
@@ -116,6 +117,43 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
     e.preventDefault();
     if (!newCampName || !newCampGoal) return;
 
+    let seeded = {
+      currentProgress: 0,
+      metrics: {
+        impressions: 0,
+        engagements: 0,
+        clicks: 0,
+        leads: 0,
+        conversions: 0,
+        revenueGenerated: 0,
+        cvr: 0,
+        cac: 0,
+        roas: 0,
+      },
+      funnelStages: undefined as Campaign['funnelStages'],
+    };
+    try {
+      const seedRes = await authFetch('/api/campaigns/seed-metrics', {
+        method: 'POST',
+        body: JSON.stringify({ clientId: client.id, budget: Number(newCampBudget) }),
+      });
+      const seed = await seedRes.json();
+      if (seed.success && seed.hasLiveData) {
+        seeded = {
+          currentProgress: seed.currentProgress || 0,
+          metrics: seed.metrics,
+          funnelStages: seed.funnelStages,
+        };
+      }
+    } catch {
+      /* stay at zeros until a live sync exists */
+    }
+
+    const today = new Date();
+    const end = new Date(today);
+    end.setDate(today.getDate() + 30);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+
     const newCampObj: Campaign = {
       id: `camp-${Date.now()}`,
       clientId: client.id,
@@ -127,29 +165,13 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
       primaryGoal: newCampGoal,
       primaryMetric: newCampTarget,
       budget: Number(newCampBudget),
-      startDate: '2026-08-01',
-      endDate: '2026-09-30',
+      startDate: iso(today),
+      endDate: iso(end),
       targetMetric: newCampTarget,
-      currentProgress: 15,
-      channels: ['instagram', 'tiktok', 'meta_ads'],
-      metrics: {
-        impressions: 45000,
-        engagements: 4800,
-        clicks: 890,
-        leads: 180,
-        conversions: 35,
-        revenueGenerated: 12250,
-        cvr: 19.4,
-        cac: 18.20,
-        roas: 4.2,
-      },
-      funnelStages: newCampType === 'sales_conversion' ? [
-        { stageName: '1. Ad & Reel Impression', count: 45000, conversionRate: 100, dropoffRate: 0, description: 'Top-of-funnel reach' },
-        { stageName: '2. Post Engagement / Reel Save', count: 4800, conversionRate: 10.6, dropoffRate: 89.4, description: 'Engagement & video retention' },
-        { stageName: '3. Link Click', count: 890, conversionRate: 18.5, dropoffRate: 81.5, description: 'Landing page traffic' },
-        { stageName: '4. DM Keyword Lead Magnet', count: 180, conversionRate: 20.2, dropoffRate: 79.8, description: 'Auto-responder trigger' },
-        { stageName: '5. Purchase / Consultation', count: 35, conversionRate: 19.4, dropoffRate: 80.6, description: 'Converted customers' },
-      ] : undefined,
+      currentProgress: seeded.currentProgress,
+      channels: client.platforms.filter((p) => p.connected).map((p) => p.id).slice(0, 3),
+      metrics: seeded.metrics,
+      funnelStages: seeded.funnelStages,
     };
 
     setCampaignList([newCampObj, ...campaignList]);

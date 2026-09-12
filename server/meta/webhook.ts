@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import type { Express, Request, Response } from 'express';
 import express from 'express';
 import { ingestWhatsAppWebhookPayload } from './ingest';
+import { listOrgWebhookTokens } from '../orgIntegrations';
 
 type GenerateFn = (prompt: string, system?: string) => Promise<string>;
 
@@ -11,15 +12,8 @@ function requireSignature(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
-export function verifyMetaSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
-  const secret = process.env.META_APP_SECRET;
-  if (!secret) {
-    if (requireSignature()) return false;
-    return true;
-  }
-  if (!signatureHeader?.startsWith('sha256=')) return false;
+function hmacValid(secret: string, rawBody: Buffer, provided: string) {
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  const provided = signatureHeader.slice('sha256='.length);
   try {
     return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(provided));
   } catch {
@@ -27,15 +21,37 @@ export function verifyMetaSignature(rawBody: Buffer, signatureHeader: string | u
   }
 }
 
+export function verifyMetaSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
+  if (!signatureHeader?.startsWith('sha256=')) {
+    return !requireSignature() && !process.env.META_APP_SECRET;
+  }
+  const provided = signatureHeader.slice('sha256='.length);
+  const envSecret = process.env.META_APP_SECRET;
+  if (envSecret && hmacValid(envSecret, rawBody, provided)) return true;
+  return !requireSignature() && !envSecret;
+}
+
+async function verifyMetaSignatureAsync(rawBody: Buffer, signatureHeader: string | undefined): Promise<boolean> {
+  if (verifyMetaSignature(rawBody, signatureHeader)) return true;
+  if (!signatureHeader?.startsWith('sha256=')) return false;
+  const provided = signatureHeader.slice('sha256='.length);
+  const rows = await listOrgWebhookTokens();
+  return rows.some((row) => row.meta_app_secret && hmacValid(row.meta_app_secret, rawBody, provided));
+}
+
 export function registerMetaWebhookRoutes(app: Express, generateGrowthAI?: GenerateFn) {
   // Verification challenge
-  app.get('/api/meta/webhook', (req: Request, res: Response) => {
+  app.get('/api/meta/webhook', async (req: Request, res: Response) => {
     const mode = req.query['hub.mode'];
-    const token = req.query['hub.verify_token'];
+    const token = String(req.query['hub.verify_token'] || '');
     const challenge = req.query['hub.challenge'];
-    const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+    const envToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+    const orgTokens = await listOrgWebhookTokens();
+    const matched =
+      (envToken && token === envToken) ||
+      orgTokens.some((row) => row.meta_webhook_verify_token && row.meta_webhook_verify_token === token);
 
-    if (mode === 'subscribe' && token && verifyToken && token === verifyToken) {
+    if (mode === 'subscribe' && token && matched) {
       res.status(200).send(String(challenge || ''));
       return;
     }
@@ -53,7 +69,7 @@ export function registerMetaWebhookRoutes(app: Express, generateGrowthAI?: Gener
           : Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
 
         const signature = req.header('x-hub-signature-256') || undefined;
-        if (!verifyMetaSignature(raw, signature)) {
+        if (!(await verifyMetaSignatureAsync(raw, signature))) {
           res.status(401).json({ success: false, error: 'Invalid signature' });
           return;
         }

@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { TrendingUp } from 'lucide-react';
 import { ClientProfile, ConversionPath, PlatformType } from '../types';
+import { useLiveInsights } from '../lib/liveApi';
+import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
+import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
 
 interface ConversionAttributionProps {
   client: ClientProfile;
@@ -77,7 +80,12 @@ function buildPathsForClient(client: ClientProfile): ConversionPath[] {
 }
 
 export const ConversionAttributionView: React.FC<ConversionAttributionProps> = ({ client }) => {
-  const paths = useMemo(() => buildPathsForClient(client), [client]);
+  const { insights } = useLiveInsights(client.id);
+  const { t } = useWorkspaceLocale();
+  const paths = useMemo(
+    () => (insights?.attribution?.length ? insights.attribution : []),
+    [insights]
+  );
   const trends = client.recentGrowthTrends || [];
   const latest = trends[trends.length - 1];
   const previous = trends[trends.length - 2];
@@ -119,7 +127,7 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
       <div className="surface-panel p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <p className="eyebrow-label">Analytics & Attribution</p>
+            <p className="eyebrow-label">{t('attribution')}</p>
             <h2 className="mt-1 text-2xl font-semibold text-white">Performance explained in plain terms</h2>
             <p className="mt-3 text-sm leading-6 text-slate-400">
               Paths and metrics are computed from {client.name}&apos;s platforms and growth trends.
@@ -130,6 +138,8 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
           </div>
         </div>
       </div>
+
+      {!paths.length && <ConnectAccountsPrompt client={client} />}
 
       <div className="grid gap-3 md:grid-cols-4">
         {topMetrics.map((metric) => (

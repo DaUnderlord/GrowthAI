@@ -10,17 +10,22 @@ import {
   ArrowRight,
   DollarSign,
 } from 'lucide-react';
-import { ClientProfile, ContentCalendarItem } from '../types';
-import { buildPostSignals } from '../lib/clientInsights';
-import { subscribeToCalendarItems } from '../lib/supabase';
+import { ClientProfile } from '../types';
+import { authFetch } from '../lib/authFetch';
+import { useLiveInsights } from '../lib/liveApi';
 
 interface AutonomousReboostProps {
   client: ClientProfile;
 }
 
 export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client }) => {
-  const [calendarItems, setCalendarItems] = useState<ContentCalendarItem[]>([]);
-  const posts = useMemo(() => buildPostSignals(client, calendarItems), [client, calendarItems]);
+  const { insights } = useLiveInsights(client.id);
+  const [busy, setBusy] = useState(false);
+  const [jobNote, setJobNote] = useState<string | null>(null);
+  const posts = useMemo(
+    () => (insights?.posts?.length ? insights.posts : []),
+    [insights]
+  );
   const candidates = useMemo(
     () => posts.filter((p) => p.reboostRecommended || p.status === 'viral' || p.status === 'decaying'),
     [posts]
@@ -28,10 +33,6 @@ export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const selectedPost = candidates.find((p) => p.id === selectedPostId) || candidates[0] || null;
   const [reboostApproved, setReboostApproved] = useState(false);
-
-  useEffect(() => {
-    return subscribeToCalendarItems(client.id, setCalendarItems);
-  }, [client.id]);
 
   useEffect(() => {
     if (candidates[0] && !selectedPostId) {
@@ -143,10 +144,37 @@ export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client
 
           <button
             type="button"
-            onClick={() => setReboostApproved(true)}
-            disabled={reboostApproved}
+            onClick={async () => {
+              if (!selectedPost) return;
+              setBusy(true);
+              setJobNote(null);
+              try {
+                const res = await authFetch('/api/growth/reboost', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    clientId: client.id,
+                    post: selectedPost,
+                    budget: 20,
+                  }),
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error);
+                setReboostApproved(true);
+                setJobNote(
+                  data.job?.provider_campaign_id
+                    ? `Meta campaign ${data.job.provider_campaign_id} created as PAUSED.`
+                    : data.job?.error || 'Reboost plan saved. Connect Meta Ads to create a paused campaign.'
+                );
+              } catch (err: any) {
+                setJobNote(err.message || 'Reboost failed');
+              } finally {
+                setBusy(false);
+              }
+            }}
+            disabled={reboostApproved || busy}
             className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-bold py-3 rounded-xl transition"
           >
+            {jobNote && <p className="text-[11px] text-amber-200 mb-2">{jobNote}</p>}
             {reboostApproved ? (
               <>
                 <CheckCircle2 className="w-5 h-5" />

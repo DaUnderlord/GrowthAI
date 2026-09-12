@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import { ClientProfile, ConnectedPlatform, UserProfile } from '../types';
 import { SocialAccountsView } from './SocialAccountsView';
+import { MetaOnboarding } from './MetaOnboarding';
+import { ProviderOnboarding } from './ProviderOnboarding';
+import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
 interface AgencyHubProps {
   clients: ClientProfile[];
@@ -22,7 +25,10 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
   currentUser,
   onUpdateClientPlatforms,
 }) => {
-  const [activeTab, setActiveTab] = useState<'tenants' | 'socials'>('tenants');
+  const { t } = useWorkspaceLocale();
+  const [activeTab, setActiveTab] = useState<'tenants' | 'socials' | 'apps'>(
+    new URLSearchParams(window.location.search).get('tab') === 'apps' ? 'apps' : 'tenants'
+  );
 
   // Client Onboarding Modal State
   const [showModal, setShowModal] = useState(false);
@@ -43,9 +49,9 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
     if (!newClientName) return;
 
     const initialPlatforms: ConnectedPlatform[] = [
-      { id: 'instagram', name: 'Instagram', icon: 'Instagram', connected: Boolean(onboardIgHandle), accountName: onboardIgHandle ? (onboardIgHandle.startsWith('@') ? onboardIgHandle : `@${onboardIgHandle}`) : `@${newClientName.toLowerCase().replace(/\s+/g, '')}`, followers: onboardIgHandle ? initialFollowersForHandle(onboardIgHandle) : 0, growthRate: 0, lastSync: onboardIgHandle ? 'Pending sync' : 'Not connected', healthScore: onboardIgHandle ? 80 : 0 },
-      { id: 'facebook', name: 'Facebook', icon: 'Facebook', connected: Boolean(onboardFbPage), accountName: onboardFbPage || `${newClientName} Page`, followers: onboardFbPage ? initialFollowersForHandle(onboardFbPage) : 0, growthRate: 0, lastSync: onboardFbPage ? 'Pending sync' : 'Not connected', healthScore: onboardFbPage ? 80 : 0 },
-      { id: 'tiktok', name: 'TikTok', icon: 'Video', connected: Boolean(onboardTiktokHandle), accountName: onboardTiktokHandle ? (onboardTiktokHandle.startsWith('@') ? onboardTiktokHandle : `@${onboardTiktokHandle}`) : `@${newClientName.toLowerCase().replace(/\s+/g, '')}_tiktok`, followers: onboardTiktokHandle ? initialFollowersForHandle(onboardTiktokHandle) : 0, growthRate: 0, lastSync: onboardTiktokHandle ? 'Pending sync' : 'Not connected', healthScore: onboardTiktokHandle ? 80 : 0 },
+      { id: 'instagram', name: 'Instagram', icon: 'Instagram', connected: false, accountName: onboardIgHandle ? (onboardIgHandle.startsWith('@') ? onboardIgHandle : `@${onboardIgHandle}`) : '', followers: 0, growthRate: 0, lastSync: 'Not connected', healthScore: 0 },
+      { id: 'facebook', name: 'Facebook', icon: 'Facebook', connected: false, accountName: onboardFbPage || '', followers: 0, growthRate: 0, lastSync: 'Not connected', healthScore: 0 },
+      { id: 'tiktok', name: 'TikTok', icon: 'Video', connected: false, accountName: onboardTiktokHandle ? (onboardTiktokHandle.startsWith('@') ? onboardTiktokHandle : `@${onboardTiktokHandle}`) : '', followers: 0, growthRate: 0, lastSync: 'Not connected', healthScore: 0 },
     ];
 
     const newClientObj: ClientProfile = {
@@ -91,7 +97,7 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
             <h2 className="text-xl font-bold text-white">Multi-Tenant Agency Management Hub</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Manage client brands and connected social accounts for this workspace.
+            {t('clientsAndSocials')}
           </p>
         </div>
         <button
@@ -106,8 +112,9 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-xs overflow-x-auto scrollbar-none">
         {[
-          { id: 'tenants', label: 'Client Accounts', icon: Building2 },
-          { id: 'socials', label: 'Social Accounts', icon: Link2 },
+          { id: 'tenants', label: t('clientAccounts'), icon: Building2 },
+          { id: 'socials', label: t('socialAccounts'), icon: Link2 },
+          { id: 'apps', label: t('connectApps'), icon: Link2 },
         ].map((t) => {
           const IconComp = t.icon;
           return (
@@ -174,6 +181,14 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
           Add a brand in this hub first, then connect social accounts.
         </div>
       )}
+      {activeTab === 'apps' && (
+        <div className="space-y-4">
+          <MetaOnboarding client={selectedClient} />
+          <ProviderOnboarding family="google" client={selectedClient} />
+          <ProviderOnboarding family="tiktok" client={selectedClient} />
+          <ProviderOnboarding family="linkedin" client={selectedClient} />
+        </div>
+      )}
 
       {/* Onboarding Modal */}
       {showModal && (
@@ -232,7 +247,10 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
 
               {/* Onboarding Social Accounts Section */}
               <div className="pt-2 border-t border-slate-800 space-y-2">
-                <span className="font-bold text-cyan-400 block text-xs">Connect Social Accounts (Onboarding)</span>
+                <span className="font-bold text-cyan-400 block text-xs">Optional handle notes</span>
+                <p className="text-[11px] text-slate-500">
+                  Typing a handle here does not connect the account. After you create the brand, use Connect apps and sign in with your own Meta, TikTok, or other developer app.
+                </p>
                 <div>
                   <label className="block text-slate-400 text-[11px] mb-1">Instagram Handle</label>
                   <input

@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
 import { getSupabaseAdmin } from '../supabaseAdmin';
 import { authOf, requireSupabaseUser } from '../authMiddleware';
-import { sendWhatsAppText } from './cloudApi';
+import { sendWhatsAppText, verifyWhatsAppNumber } from './cloudApi';
+import { getAppUrl } from '../appUrl';
 import { normalizePhone, resolveAccessToken } from './ingest';
 import { heuristicLeadAnalysis, suggestReplyWithGemini } from './aiLead';
 
@@ -27,7 +28,7 @@ export function registerWhatsAppStaffRoutes(app: any, generateGrowthAI?: Generat
       res.json({
         success: true,
         accounts: data || [],
-        webhookUrl: `${process.env.APP_URL || 'http://localhost:3000'}/api/meta/webhook`,
+        webhookUrl: `${getAppUrl()}/api/meta/webhook`,
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -71,16 +72,24 @@ export function registerWhatsAppStaffRoutes(app: any, generateGrowthAI?: Generat
         return;
       }
 
+      let verified;
+      try {
+        verified = await verifyWhatsAppNumber(String(phoneNumberId).trim(), String(accessToken).trim());
+      } catch (err: any) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+
       const { data: account, error } = await admin
         .from('whatsapp_accounts')
         .upsert(
           {
             org_id: auth.orgId,
             client_id: clientId,
-            phone_number_id: String(phoneNumberId).trim(),
+            phone_number_id: verified.id,
             waba_id: wabaId || null,
-            display_phone_number: displayPhoneNumber || '',
-            verified_name: verifiedName || null,
+            display_phone_number: displayPhoneNumber || verified.displayPhoneNumber,
+            verified_name: verifiedName || verified.verifiedName || null,
             status: 'connected',
             webhook_subscribed: true,
             updated_at: new Date().toISOString(),
@@ -101,7 +110,7 @@ export function registerWhatsAppStaffRoutes(app: any, generateGrowthAI?: Generat
       res.json({
         success: true,
         account,
-        webhookUrl: `${process.env.APP_URL || 'http://localhost:3000'}/api/meta/webhook`,
+        webhookUrl: `${getAppUrl()}/api/meta/webhook`,
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });

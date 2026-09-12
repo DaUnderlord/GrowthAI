@@ -2,44 +2,45 @@ import React, { useState } from 'react';
 import {
   BarChart2,
   Calendar,
+  Link2,
   MessageCircle,
   Sparkles,
   Target,
-  Users,
   X,
 } from 'lucide-react';
 import { BrandMark } from './BrandIcons';
+import { navigateView } from '../lib/liveApi';
 
 const STEPS = [
   {
     icon: Sparkles,
     title: 'Welcome to GrowthOS',
-    body: 'Your agency command center for campaigns, content, AI insights, and client growth — all in one calm workspace.',
+    body: 'Your agency workspace for campaigns, content, WhatsApp, and live channel metrics. GrowthOS does not ship with shared Meta, Google, TikTok, or LinkedIn keys.',
+  },
+  {
+    icon: Link2,
+    title: 'Connect your own apps',
+    body: 'In Agency Hub → Connect apps (or Settings → Integrations), create a free developer app for each network, paste your Client ID and Secret, then sign in for the brand you selected. Instagram, Facebook, Ads, YouTube, GA4, TikTok, LinkedIn, and WhatsApp all use credentials you add.',
   },
   {
     icon: BarChart2,
-    title: 'Overview dashboard',
-    body: 'Track growth score, engagement health, and revenue signals for each brand you manage from a single home view.',
+    title: 'Live metrics only after sync',
+    body: 'Overview, Audience, and Analytics stay empty until a brand account is connected and synced. Audience segments come from the provider’s demographic breakdown, not invented personas.',
   },
   {
     icon: Target,
     title: 'Growth AI Suite',
-    body: 'Run virality predictions, optimize hooks and captions, scan competitors, and launch multi-agent strategy sessions powered by Gemini.',
+    body: 'Gemini can draft campaigns and creative once you have a brand. Paid reboost and ad metrics need a connected ads account from your own app.',
   },
   {
     icon: Calendar,
     title: 'Campaigns & calendar',
-    body: 'Plan campaigns, schedule posts, run AI calendar audits, and share brief links with designers or copywriters on your team.',
+    body: 'Plan campaigns, schedule posts, run AI calendar audits, and share brief links with your team. Campaign numbers stay at zero until live data exists.',
   },
   {
     icon: MessageCircle,
-    title: 'WhatsApp & team',
-    body: 'Connect WhatsApp for lead conversations, invite teammates with role-based privileges, and manage invoices from Agency Hub.',
-  },
-  {
-    icon: Users,
-    title: 'You are ready',
-    body: 'Start by connecting a social account, creating your first campaign, or running an AI audit on your content calendar.',
+    title: 'WhatsApp, team, invoices',
+    body: 'WhatsApp uses your Meta Cloud API number (Phone Number ID + token). Invite teammates with roles. Invoices are records you can email — card payments are off.',
   },
 ];
 
@@ -62,12 +63,17 @@ export const FeatureOnboardingModal: React.FC<FeatureOnboardingModalProps> = ({
   const Icon = current.icon;
   const isLast = step === STEPS.length - 1;
 
+  const finish = (openHub: boolean) => {
+    if (openHub) navigateView('agency', { tab: 'apps' });
+    onComplete();
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#070b12]/85 p-4 backdrop-blur-md">
       <div className="fade-rise relative w-full max-w-lg rounded-2xl border border-white/[0.08] bg-[#0a1018] p-6 shadow-2xl sm:p-8">
         <button
           type="button"
-          onClick={onComplete}
+          onClick={() => finish(false)}
           className="absolute right-4 top-4 rounded-lg p-2 text-slate-500 transition hover:bg-white/[0.04] hover:text-white"
           aria-label="Skip tour"
         >
@@ -112,12 +118,12 @@ export const FeatureOnboardingModal: React.FC<FeatureOnboardingModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (isLast) onComplete();
+                if (isLast) finish(true);
                 else setStep((s) => s + 1);
               }}
               className="primary-button"
             >
-              {isLast ? 'Start exploring' : 'Next'}
+              {isLast ? 'Connect my apps' : 'Next'}
             </button>
           </div>
         </div>

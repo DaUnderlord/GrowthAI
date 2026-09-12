@@ -18,6 +18,8 @@ import { AuthOnboardingModal } from './components/AuthOnboardingModal';
 import { FeatureOnboardingModal } from './components/FeatureOnboardingModal';
 import { SplashScreen } from './components/SplashScreen';
 import { ClientProfile, CurrencyCode, UserProfile } from './types';
+import { WorkspaceLocaleProvider } from './lib/WorkspaceLocale';
+import { BlueprintExplorerView } from './components/BlueprintExplorerView';
 import {
   subscribeToClients,
   subscribeToUsers,
@@ -61,6 +63,17 @@ export default function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileModalInitialTab, setProfileModalInitialTab] = useState<'view' | 'edit'>('view');
   const [briefToken] = useState(() => new URLSearchParams(window.location.search).get('brief'));
+
+  useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get('view');
+    if (initial) setActiveView(initial);
+    const onNav = (event: Event) => {
+      const view = (event as CustomEvent<string>).detail;
+      if (view) setActiveView(view);
+    };
+    window.addEventListener('gos:navigate', onNav);
+    return () => window.removeEventListener('gos:navigate', onNav);
+  }, []);
 
   const handleSplashFinished = useCallback(() => setSplashDone(true), []);
 
@@ -274,6 +287,10 @@ export default function App() {
   );
 
   return (
+    <WorkspaceLocaleProvider
+      languagePref={activeUser?.preferences?.language}
+      timeZonePref={activeUser?.preferences?.timeZone}
+    >
     <div className="flex min-h-screen flex-col bg-transparent text-slate-100 font-sans">
       <HeaderNav
         clients={clients}
@@ -415,9 +432,11 @@ export default function App() {
                     }}
                   />
                 )}
+                {activeView === 'blueprint' && <BlueprintExplorerView />}
                 {activeView === 'settings' && (
                   <SettingsView
                     currentUser={activeUser}
+                    selectedClient={activeClient}
                     currency={currency}
                     setCurrency={setCurrency}
                     whiteLabelMode={whiteLabelMode}
@@ -569,5 +588,6 @@ export default function App() {
         </span>
       </footer>
     </div>
+    </WorkspaceLocaleProvider>
   );
 }

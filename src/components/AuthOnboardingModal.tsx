@@ -182,7 +182,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
         ? 'Your agency'
         : wizardStep === 3
           ? 'Focus areas'
-          : 'Preparing workspace';
+          : 'Then connect your apps';
 
   return (
     <div className="fixed inset-0 z-[120] flex items-stretch justify-center bg-[#070b12]/95 p-0 backdrop-blur-md sm:items-center sm:p-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
@@ -195,7 +195,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
             <BrandMark className="h-12 w-12 rounded-xl" />
             <h2 className="font-display mt-6 text-3xl font-medium text-white">Growth that stays calm</h2>
             <p className="mt-3 max-w-xs text-sm leading-6 text-slate-300">
-              Campaigns, content, and insight — without the dashboard noise.
+              Campaigns, content, and insight — without the dashboard noise. You connect your own Meta, Google, TikTok, LinkedIn, and WhatsApp apps after signup.
             </p>
           </div>
         </div>
@@ -461,12 +461,12 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
               {wizardStep === 4 && (
                 <div className="space-y-4 py-4 text-center">
                   <p className="font-display text-2xl text-white">
-                    {analysisComplete ? 'Workspace ready' : 'Setting things up'}
+                    {analysisComplete ? 'Workspace ready' : 'Creating your workspace'}
                   </p>
                   <p className="text-sm text-slate-400">
                     {analysisComplete
-                      ? 'Your GrowthOS workspace is ready to open.'
-                      : 'Calibrating goals and industry focus…'}
+                      ? 'After you enter, open Agency Hub → Connect apps and add your own Meta, Google, TikTok, LinkedIn, and WhatsApp credentials. GrowthOS does not use a shared developer account.'
+                      : 'Saving your agency profile…'}
                   </p>
                   <div className="mx-auto h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/[0.06]">
                     <div

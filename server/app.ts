@@ -1,7 +1,12 @@
-import "./loadEnv";
+﻿import "./loadEnv";
 import express, { type Express } from "express";
 import { registerMetaWebhookRoutes } from "./meta/webhook";
 import { registerWhatsAppStaffRoutes, requireSupabaseUser } from "./meta/staffRoutes";
+import { registerSocialRoutes } from "./social/routes";
+import { registerCommerceRoutes } from "./commerceRoutes";
+import { isEmailConfigured } from "./email";
+import { isStripeConfigured } from "./stripeBilling";
+import { providerConfig } from "./social/providers";
 import {
   AiServiceError,
   generateGeminiContent,
@@ -18,8 +23,21 @@ export function createApp(): Express {
 
   const app = express();
 
+  app.use((req, _res, next) => {
+    const original = String(
+      req.headers['x-vercel-original-path'] ||
+        req.headers['x-invoke-path'] ||
+        ''
+    );
+    if (original.startsWith('/auth/') && (req.path === '/api' || req.path === '/')) {
+      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      req.url = `${original}${qs}`;
+    }
+    next();
+  });
+
   app.use((req, res, next) => {
-    if (req.method === "POST" && req.path === "/api/meta/webhook") {
+    if (req.method === "POST" && (req.path === "/api/meta/webhook" || req.path === "/api/stripe/webhook")) {
       return next();
     }
     return express.json({ limit: "2mb" })(req, res, next);
@@ -37,6 +55,14 @@ export function createApp(): Express {
       hasWhatsAppConfig: Boolean(
         process.env.WHATSAPP_ACCESS_TOKEN || process.env.SUPABASE_SERVICE_ROLE_KEY
       ),
+      emailConfigured: isEmailConfigured(),
+      stripeConfigured: isStripeConfigured(),
+      socialProviders: {
+        meta: (() => { try { return providerConfig('instagram').configured; } catch { return false; } })(),
+        google: (() => { try { return providerConfig('youtube').configured; } catch { return false; } })(),
+        tiktok: (() => { try { return providerConfig('tiktok').configured; } catch { return false; } })(),
+        linkedin: (() => { try { return providerConfig('linkedin').configured; } catch { return false; } })(),
+      },
       supabaseConfigured: Boolean(supabaseUrl && supabaseAnonKey),
       appUrl: getAppUrl(),
       timestamp: new Date().toISOString(),
@@ -57,6 +83,8 @@ export function createApp(): Express {
 
   registerMetaWebhookRoutes(app, generateGrowthAI);
   registerWhatsAppStaffRoutes(app, generateGrowthAI);
+  registerSocialRoutes(app);
+  registerCommerceRoutes(app);
 
   const growthAi = [requireSupabaseUser];
 
@@ -156,19 +184,40 @@ Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure
 
   app.post("/api/growth/competitor-scan", ...growthAi, async (req, res) => {
     try {
-      const { competitorName, industry, channel } = req.body || {};
+      const { competitorName, industry, channel, website } = req.body || {};
       if (!String(competitorName || '').trim()) {
         res.status(400).json({ success: false, error: 'competitorName is required', code: 'validation' });
         return;
       }
 
+      const target = String(website || competitorName).trim();
+      let fetched = '';
+      const urlGuess = target.startsWith('http') ? target : `https://${target.replace(/^@/, '')}`;
+      try {
+        const page = await fetch(urlGuess, {
+          headers: { 'User-Agent': 'GrowthOS-Research/1.0' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (page.ok) {
+          const html = await page.text();
+          fetched = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 6000);
+        }
+      } catch {
+        fetched = '';
+      }
+
       const systemPrompt = `You are GrowthOS AI Competitor Intelligence Engine.
-Analyze competitor positioning, identify content theme gaps, engagement triggers, and recommend 3 high-impact counter-strategies. Respond in clean Markdown.`;
+Use live web search plus any fetched page text. Cite public sources. Do not invent follower counts. If a number is unknown, say unknown.
+Identify positioning, content themes, engagement triggers, and 3 counter-strategies. Markdown.`;
 
-      const prompt = `Competitor: "${competitorName}", Industry: "${industry}", Channel: "${channel}". Analyze their growth pattern and identify strategic opportunities to outperform them.`;
+      const prompt = `Competitor: "${competitorName}", Industry: "${industry}", Channel: "${channel}", Website/handle: "${target}".
+Fetched public page text (may be empty): ${fetched || '[none]'}
+Search the public web for this brand's social presence and summarize only what you can verify.`;
 
-      const resultText = await generateGrowthAI(prompt, systemPrompt);
-      res.json({ success: true, report: resultText });
+      const resultText = await generateGrowthAI(prompt, systemPrompt, {
+        tools: [{ googleSearch: {} }],
+      });
+      res.json({ success: true, report: resultText, fetchedPage: Boolean(fetched) });
     } catch (err: any) {
       sendAiError(res, err);
     }
@@ -221,284 +270,6 @@ Respond in structured Markdown.`;
     } catch (err: any) {
       sendAiError(res, err);
     }
-  });
-
-  app.post("/api/socials/sync-live", requireSupabaseUser, async (req, res) => {
-    try {
-      const { platform, accountHandle, followers, growthRate, accessToken } = req.body;
-      const pingMs = Math.floor(Math.random() * 25) + 15;
-      const baseFollowers = Math.max(0, Number(followers) || 0);
-      const growth = Number(growthRate) || 0;
-
-      res.json({
-        success: true,
-        platform,
-        accountHandle,
-        livePingMs: pingMs,
-        timestamp: new Date().toISOString(),
-        stats: {
-          followers: baseFollowers,
-          growthRate: growth,
-          activeLiveSessions: baseFollowers > 5000 ? 1 : 0,
-          impressions24h: Math.round(baseFollowers * 3.8),
-          apiStatus: accessToken ? 'live' : 'syncing',
-          rateLimitQuota: 'within limits',
-        },
-        oauthTokenMasked: accessToken
-          ? `${String(accessToken).substring(0, 6)}...${String(accessToken).slice(-4)}`
-          : undefined,
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message || "Failed to sync live platform data" });
-    }
-  });
-
-  app.get("/api/auth/:platform/url", (req, res) => {
-    const { platform } = req.params;
-    const redirectUri = (req.query.redirectUri as string) || `${getAppUrl()}/auth/callback`;
-
-    const oauthConfigs: Record<string, { authorizeUrl: string; defaultClientId: string; scopes: string }> = {
-      instagram: {
-        authorizeUrl: "https://www.facebook.com/v18.0/dialog/oauth",
-        defaultClientId: process.env.META_CLIENT_ID || "1098273645129384",
-        scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
-      },
-      facebook: {
-        authorizeUrl: "https://www.facebook.com/v18.0/dialog/oauth",
-        defaultClientId: process.env.META_CLIENT_ID || "1098273645129384",
-        scopes: "public_profile,pages_show_list,pages_read_engagement,ads_management",
-      },
-      youtube: {
-        authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
-        defaultClientId: process.env.GOOGLE_CLIENT_ID || "67049301392-apps.googleusercontent.com",
-        scopes: "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload",
-      },
-      google_analytics: {
-        authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
-        defaultClientId: process.env.GOOGLE_CLIENT_ID || "67049301392-apps.googleusercontent.com",
-        scopes: "https://www.googleapis.com/auth/analytics.readonly",
-      },
-      linkedin: {
-        authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
-        defaultClientId: process.env.LINKEDIN_CLIENT_ID || "86v948x1209384",
-        scopes: "r_liteprofile r_emailaddress w_member_social r_organization_social",
-      },
-      tiktok: {
-        authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
-        defaultClientId: process.env.TIKTOK_CLIENT_KEY || "aw3894291048",
-        scopes: "user.info.basic,video.list,video.upload",
-      },
-    };
-
-    const config = oauthConfigs[platform] || oauthConfigs.instagram;
-    const clientId = (req.query.clientId as string) || config.defaultClientId;
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      client_key: clientId,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: config.scopes,
-      state: `platform_${platform}_${Date.now()}`,
-    });
-
-    const fullUrl = `${config.authorizeUrl}?${params.toString()}`;
-    const consentUrl = `/auth/consent?platform=${platform}&handle=${encodeURIComponent(req.query.handle as string || '')}&scopes=${encodeURIComponent(config.scopes)}`;
-
-    res.json({
-      success: true,
-      platform,
-      url: consentUrl,
-      externalUrl: fullUrl,
-      redirectUri,
-      scopes: config.scopes.split(/[\s,]+/),
-    });
-  });
-
-  app.post("/api/auth/:platform/exchange-token", requireSupabaseUser, async (req, res) => {
-    try {
-      const { platform } = req.params;
-      const { accessToken, accountHandle, initialFollowers, growthRate } = req.body;
-
-      if (!accessToken && !accountHandle) {
-        res.status(400).json({
-          success: false,
-          error: 'Provide an account handle or access token to connect this channel.',
-        });
-        return;
-      }
-
-      const masked = accessToken
-        ? `${accessToken.substring(0, 6)}...${accessToken.slice(-4)}`
-        : `manual_${platform}_${Date.now().toString(36).slice(-6)}`;
-
-      const handle = accountHandle || `@${platform}_brand`;
-      const followers = Math.max(0, Number(initialFollowers) || 0);
-      const growth = Math.max(0, Number(growthRate) || 0);
-      const healthScore = accessToken ? 96 : followers > 0 ? 88 : 72;
-
-      res.json({
-        success: true,
-        platform,
-        connected: true,
-        accountName: handle,
-        followers,
-        growthRate: growth,
-        healthScore,
-        oauthTokenMasked: masked,
-        apiStatus: accessToken ? 'live' : 'syncing',
-        lastSync: new Date().toISOString(),
-        livePingMs: Math.floor(Math.random() * 20) + 12,
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message || "OAuth exchange failed" });
-    }
-  });
-
-  app.get(["/auth/consent", "/auth/consent/"], (req, res) => {
-    const platform = (req.query.platform as string) || 'instagram';
-    const handle = (req.query.handle as string) || `@${platform}_official`;
-    const appOrigin = getAppUrl().replace(/\/$/, '');
-
-    const platformTitles: Record<string, { title: string; iconBg: string }> = {
-      instagram: { title: 'Meta & Instagram Business Graph API', iconBg: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)' },
-      facebook: { title: 'Meta Business Page & Ads Manager API', iconBg: '#1877f2' },
-      youtube: { title: 'Google Cloud & YouTube Data API v3', iconBg: '#ff0000' },
-      google_analytics: { title: 'Google Analytics 4 Data API', iconBg: '#f59e0b' },
-      linkedin: { title: 'LinkedIn Marketing & Profile API', iconBg: '#0a66c2' },
-      tiktok: { title: 'TikTok for Developers Business API', iconBg: '#000000' },
-    };
-
-    const meta = platformTitles[platform] || platformTitles.instagram;
-
-    res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>OAuth Consent - ${meta.title}</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          * { box-sizing: border-box; }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #020617; color: #f8fafc; margin: 0; padding: 24px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-          .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 32px; width: 100%; max-width: 440px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6); }
-          .logo { width: 52px; height: 52px; background: ${meta.iconBg}; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: white; font-weight: 900; font-size: 22px; }
-          h1 { font-size: 18px; font-weight: 700; text-align: center; margin: 0 0 6px; }
-          .sub { text-align: center; color: #94a3b8; font-size: 12px; margin-bottom: 24px; }
-          .box { background: #020617; border: 1px solid #1e293b; border-radius: 12px; padding: 14px; margin-bottom: 20px; font-size: 12px; }
-          .box label { display: block; color: #cbd5e1; font-weight: 600; margin-bottom: 6px; }
-          .box input { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: white; font-size: 13px; outline: none; }
-          .scopes { background: rgba(15, 23, 42, 0.8); border-radius: 10px; padding: 12px; margin-bottom: 20px; border: 1px solid #1e293b; }
-          .scopes-title { font-size: 11px; font-weight: 700; color: #a7f3d0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-          .scope-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #cbd5e1; margin-bottom: 6px; }
-          .scope-item input { accent-color: #10b981; width: 15px; height: 15px; }
-          .btn { width: 100%; background: #2563eb; color: white; font-weight: 700; padding: 12px; border: none; border-radius: 12px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
-          .btn:hover { background: #1d4ed8; }
-          .footer { text-align: center; font-size: 11px; color: #64748b; margin-top: 16px; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <div class="logo">⚡</div>
-          <h1>Connect to ${meta.title}</h1>
-          <p class="sub">GrowthOS AI is requesting permissions to manage live insights and content for your professional account.</p>
-
-          <form id="consentForm">
-            <div class="box">
-              <label>Account Handle / Profile ID</label>
-              <input type="text" id="handleInput" value="${handle}" placeholder="@your_brand" required />
-            </div>
-
-            <div class="scopes">
-              <div class="scopes-title">Requested OAuth Permissions</div>
-              <div class="scope-item">
-                <input type="checkbox" checked disabled />
-                <span>Read Profile Stats & Analytics</span>
-              </div>
-              <div class="scope-item">
-                <input type="checkbox" checked disabled />
-                <span>Publish Approved Reels & Carousel Posts</span>
-              </div>
-              <div class="scope-item">
-                <input type="checkbox" checked disabled />
-                <span>Sync Real-Time Audience Engagement</span>
-              </div>
-            </div>
-
-            <button type="submit" class="btn" id="submitBtn">Authorize & Grant Permissions</button>
-          </form>
-
-          <div class="footer">Protected by 256-bit OAuth 2.0 Security Token Standard</div>
-        </div>
-
-        <script>
-          document.getElementById('consentForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const btn = document.getElementById('submitBtn');
-            const hInput = document.getElementById('handleInput').value;
-            btn.innerText = 'Connecting OAuth Token...';
-            btn.style.opacity = '0.7';
-
-            setTimeout(() => {
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'OAUTH_AUTH_SUCCESS',
-                  platform: ${JSON.stringify(platform)},
-                  code: 'live_oauth_token_' + Math.random().toString(36).substring(2, 9),
-                  accountHandle: hInput,
-                  timestamp: new Date().toISOString()
-                }, ${JSON.stringify(appOrigin)});
-                window.close();
-              } else {
-                window.location.href = '/auth/callback?state=platform_' + ${JSON.stringify(platform)};
-              }
-            }, 800);
-          });
-        </script>
-      </body>
-    </html>
-  `);
-  });
-
-  app.get(["/auth/callback", "/auth/callback/"], (req, res) => {
-    const { code, state } = req.query;
-    const platformMatch = typeof state === 'string' ? state.split('_')[1] : 'social';
-    const appOrigin = getAppUrl().replace(/\/$/, '');
-
-    res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>OAuth Authentication - GrowthOS AI</title>
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #020617; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
-          .card { background: #0f172a; padding: 40px; border-radius: 24px; border: 1px solid #1e293b; max-width: 420px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
-          .icon { width: 56px; height: 56px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: #10b981; font-size: 24px; font-weight: bold; }
-          h2 { margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #f8fafc; }
-          p { margin: 0; color: #94a3b8; font-size: 13px; line-height: 1.5; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <div class="icon">✓</div>
-          <h2>Social Account Connected!</h2>
-          <p>OAuth permissions granted successfully. Returning token to GrowthOS AI dashboard...</p>
-        </div>
-        <script>
-          if (window.opener) {
-            window.opener.postMessage({
-              type: 'OAUTH_AUTH_SUCCESS',
-              platform: ${JSON.stringify(platformMatch)},
-              code: ${JSON.stringify(code || 'live_oauth_code_verified')},
-              timestamp: new Date().toISOString()
-            }, ${JSON.stringify(appOrigin)});
-            setTimeout(() => window.close(), 1000);
-          } else {
-            setTimeout(() => { window.location.href = '/?oauth_connected=true'; }, 1500);
-          }
-        </script>
-      </body>
-    </html>
-  `);
   });
 
   app.post("/api/growth/analyze-creative-multimodal", ...growthAi, async (req, res) => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   DollarSign, 
   Plus, 
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ClientProfile, CurrencyCode, InvoiceItem, UserProfile } from '../types';
 import { formatCurrency, CURRENCIES } from '../utils/currency';
+import { authFetch } from '../lib/authFetch';
 
 interface InvoiceManagementViewProps {
   clients: ClientProfile[];
@@ -40,7 +41,35 @@ export const InvoiceManagementView: React.FC<InvoiceManagementViewProps> = ({
   const [invoiceAmount, setInvoiceAmount] = useState(15000);
   const [invoiceDueDate, setInvoiceDueDate] = useState('2026-08-15');
   const [invoiceDescription, setInvoiceDescription] = useState('Monthly Retainer - AI Social Growth Engine & Campaign Management');
+  const [invoiceEmail, setInvoiceEmail] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [serverInvoices, setServerInvoices] = useState<InvoiceItem[]>([]);
+  const [emailConfigured, setEmailConfigured] = useState(false);
+
+  useEffect(() => {
+    void authFetch('/api/invoices')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success) return;
+        setEmailConfigured(Boolean(data.emailConfigured));
+        setServerInvoices(
+          (data.invoices || []).map((row: any) => ({
+            id: row.id,
+            invoiceNumber: row.invoice_number,
+            clientId: row.client_id,
+            clientName: row.client_name,
+            amount: Number(row.amount),
+            currency: row.currency,
+            date: String(row.issued_at || '').slice(0, 10),
+            dueDate: row.due_date || '',
+            status: row.status,
+            description: row.description || '',
+            paidAt: row.paid_at ? String(row.paid_at).slice(0, 10) : undefined,
+          }))
+        );
+      })
+      .catch(() => undefined);
+  }, []);
 
   // Check Privilege
   if (!currentUser.privileges.can_invoice_management) {
@@ -60,8 +89,17 @@ export const InvoiceManagementView: React.FC<InvoiceManagementViewProps> = ({
     );
   }
 
-  // Gather all invoices across clients
-  const allInvoices: InvoiceItem[] = clients.flatMap((c) => c.invoices || []);
+  // Gather all invoices across clients, preferring the invoices table when present
+  const localInvoices: InvoiceItem[] = clients.flatMap((c) => c.invoices || []);
+  const allInvoices: InvoiceItem[] = [
+    ...serverInvoices,
+    ...localInvoices.filter(
+      (inv) =>
+        !serverInvoices.some(
+          (row) => row.id === inv.id || row.invoiceNumber === inv.invoiceNumber
+        )
+    ),
+  ];
 
   const filteredInvoices = allInvoices.filter((inv) => {
     if (filterStatus === 'all') return true;
@@ -107,6 +145,21 @@ export const InvoiceManagementView: React.FC<InvoiceManagementViewProps> = ({
     });
 
     onUpdateClients(updated);
+    if (invoiceId) {
+      void authFetch(`/api/invoices/${encodeURIComponent(invoiceId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'paid' }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setServerInvoices((prev) =>
+              prev.map((inv) => (inv.id === invoiceId ? { ...inv, status: 'paid', paidAt: new Date().toISOString().slice(0, 10) } : inv))
+            );
+          }
+        })
+        .catch(() => undefined);
+    }
     showToast('Payment cleared and invoice marked as PAID!');
   };
 
@@ -134,16 +187,65 @@ export const InvoiceManagementView: React.FC<InvoiceManagementViewProps> = ({
 
     onUpdateClients(updated);
     setDeletingInvoiceId(null);
+    void authFetch(`/api/invoices/${encodeURIComponent(invoiceId)}`, { method: 'DELETE' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setServerInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+        }
+      })
+      .catch(() => undefined);
     showToast('Invoice deleted successfully');
   };
-  const handleRaiseInvoice = (e: React.FormEvent) => {
+  const handleRaiseInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     const targetClient = clients.find((c) => c.id === selectedClientId);
     if (!targetClient) return;
 
+    let emailed = false;
+    let invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    try {
+      const res = await authFetch('/api/invoices', {
+        method: 'POST',
+        body: JSON.stringify({
+          clientId: targetClient.id,
+          clientName: targetClient.name,
+          clientEmail: invoiceEmail || undefined,
+          amount: Number(invoiceAmount),
+          currency,
+          description: invoiceDescription,
+          dueDate: invoiceDueDate,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      emailed = Boolean(data.emailSent);
+      invoiceNumber = data.invoice?.invoice_number || invoiceNumber;
+      if (data.invoice) {
+        setServerInvoices((prev) => [
+          {
+            id: data.invoice.id,
+            invoiceNumber,
+            clientId: targetClient.id,
+            clientName: targetClient.name,
+            amount: Number(invoiceAmount),
+            currency,
+            date: new Date().toISOString().split('T')[0],
+            dueDate: invoiceDueDate,
+            status: 'outstanding',
+            description: invoiceDescription,
+          },
+          ...prev,
+        ]);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Could not create invoice');
+      return;
+    }
+
     const newInvoice: InvoiceItem = {
       id: `inv-${Date.now()}`,
-      invoiceNumber: `INV-2026-${Math.floor(100 + Math.random() * 900)}`,
+      invoiceNumber,
       clientId: targetClient.id,
       clientName: targetClient.name,
       amount: Number(invoiceAmount),
@@ -169,7 +271,13 @@ export const InvoiceManagementView: React.FC<InvoiceManagementViewProps> = ({
 
     onUpdateClients(updated);
     setShowRaiseModal(false);
-    showToast(`Invoice ${newInvoice.invoiceNumber} raised for ${targetClient.name}`);
+    showToast(
+      emailed
+        ? `Invoice ${newInvoice.invoiceNumber} created and emailed. Payments stay off.`
+        : invoiceEmail
+          ? `Invoice ${newInvoice.invoiceNumber} saved. Email was not sent — set RESEND_API_KEY and EMAIL_FROM on the server.`
+          : `Invoice ${newInvoice.invoiceNumber} saved. Payments stay off.`
+    );
   };
 
   return (
@@ -194,8 +302,13 @@ export const InvoiceManagementView: React.FC<InvoiceManagementViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-400">
-            Track client payment dates, raise official invoices, and clear outstanding balances in real-time.
+            Invoices are workspace records. Card payments stay off. Email is sent only when Resend is configured on the server.
           </p>
+          {!emailConfigured && (
+            <p className="mt-2 text-[11px] text-amber-300">
+              Email delivery is off until RESEND_API_KEY and EMAIL_FROM are set. Creating an invoice still saves the record.
+            </p>
+          )}
         </div>
 
         {/* Global Currency Selector (Only Appears Here for Invoice Privilege) */}
@@ -510,6 +623,17 @@ export const InvoiceManagementView: React.FC<InvoiceManagementViewProps> = ({
                   value={invoiceDueDate}
                   onChange={(e) => setInvoiceDueDate(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Client email (for send)</label>
+                <input
+                  type="email"
+                  value={invoiceEmail}
+                  onChange={(e) => setInvoiceEmail(e.target.value)}
+                  placeholder="finance@client.com"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
                 />
               </div>
 

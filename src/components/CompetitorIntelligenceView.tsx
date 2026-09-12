@@ -36,6 +36,7 @@ export const CompetitorIntelligenceView: React.FC<CompetitorIntelligenceProps> =
         competitorName: competitorInput.trim(),
         industry: client.industry,
         channel: 'instagram',
+        website: competitorInput.trim(),
       });
       if (!result.ok) {
         setError(result.error);

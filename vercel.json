@@ -10,7 +10,15 @@
     { "source": "/api/whatsapp/:path*", "destination": "/api" },
     { "source": "/api/socials/:path*", "destination": "/api" },
     { "source": "/api/auth/:path*", "destination": "/api" },
-    { "source": "/auth/:path*", "destination": "/api" },
+    { "source": "/api/invoices", "destination": "/api" },
+    { "source": "/api/invoices/:path*", "destination": "/api" },
+    { "source": "/api/team/:path*", "destination": "/api" },
+    { "source": "/api/billing/:path*", "destination": "/api" },
+    { "source": "/api/org/:path*", "destination": "/api" },
+    { "source": "/api/campaigns/:path*", "destination": "/api" },
+    { "source": "/api/insights/:path*", "destination": "/api" },
+    { "source": "/api/stripe/:path*", "destination": "/api" },
+    { "source": "/auth/:path*", "destination": "/api/auth/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {
