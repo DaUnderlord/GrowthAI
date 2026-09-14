@@ -33,3 +33,13 @@ export async function readJsonResponse<T = unknown>(res: Response): Promise<Json
     };
   }
 }
+
+export async function readJsonOrThrow<T = any>(res: Response): Promise<T> {
+  const parsed = await readJsonResponse<T>(res);
+  if (parsed.ok === false) throw new Error(parsed.error);
+  const data = parsed.data as T & { success?: boolean; error?: string };
+  if (res.ok === false && data && typeof data === 'object' && data.success === false && data.error) {
+    throw new Error(data.error);
+  }
+  return parsed.data;
+}

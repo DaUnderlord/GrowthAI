@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, ExternalLink, Loader2, Wifi } from 'lucide-react';
 import { ClientProfile } from '../types';
 import { authFetch } from '../lib/authFetch';
+import { readJsonOrThrow } from '../lib/httpJson';
 import { navigateView } from '../lib/liveApi';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
@@ -101,7 +102,7 @@ export function ProviderOnboarding({
 
   const load = async () => {
     const res = await authFetch('/api/org/providers');
-    const data = await res.json();
+    const data = await readJsonOrThrow<{ success?: boolean; families?: Record<string, { configured?: boolean; verifyToken?: string }> }>(res);
     if (!data.success) return;
     setRedirectUri(`${window.location.origin}/auth/callback`);
     const familyStatus = data.families?.[family];
@@ -143,7 +144,7 @@ export function ProviderOnboarding({
           customerId: family === 'google' ? customerId : undefined,
         }),
       });
-      const data = await res.json();
+      const data = await readJsonOrThrow<{ success?: boolean; error?: string }>(res);
       if (!data.success) throw new Error(data.error);
       setConfigured(true);
       setStep(3);
@@ -167,7 +168,7 @@ export function ProviderOnboarding({
       const res = await authFetch(
         `/api/auth/${platform}/url?clientId=${encodeURIComponent(client.id)}&redirectUri=${encodeURIComponent(redirectUri)}`
       );
-      const data = await res.json();
+      const data = await readJsonOrThrow<{ url?: string; error?: string }>(res);
       if (!data.url) throw new Error(data.error || t('couldNotStartLogin'));
       window.open(data.url, `${family}_${platform}`, 'width=600,height=720');
     } catch (err: any) {

@@ -4,7 +4,6 @@ import { UserProfile, UserRole } from '../types';
 import {
   registerUser,
   loginWithEmail,
-  loginWithGoogle,
   resetPasswordForEmail,
   isSupabaseConfigured,
 } from '../lib/supabase';
@@ -78,6 +77,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
       setAnalysisComplete(false);
       setForgotSent(false);
       setLoginError(null);
+      setIsSubmitting(false);
     }
   }, [isOpen, initialMode]);
 
@@ -110,20 +110,6 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
     } catch (err: any) {
       setLoginError(err.message || 'Invalid email or password.');
     } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setLoginError(null);
-    setIsSubmitting(true);
-    try {
-      const userProfile = await loginWithGoogle();
-      onLogin(userProfile);
-      onClose();
-    } catch (err: any) {
-      if (String(err?.message || '').includes('Redirecting to Google')) return;
-      setLoginError(err.message || 'Google sign in failed.');
       setIsSubmitting(false);
     }
   };
@@ -162,8 +148,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
       onLogin(newUser);
       onClose();
     } catch (err: any) {
-      setLoginError(err.message || 'Registration failed.');
-      setWizardStep(1);
+      setLoginError(err.message || 'Registration failed. Stay on this step and try again, or sign in with email.');
     } finally {
       setIsSubmitting(false);
     }
@@ -218,11 +203,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
 
           {!isSupabaseConfigured() && (
             <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-              Supabase is not configured for this deployment. In Vercel, add{' '}
-              <code className="text-amber-50">VITE_SUPABASE_URL</code> and{' '}
-              <code className="text-amber-50">VITE_SUPABASE_ANON_KEY</code> (or{' '}
-              <code className="text-amber-50">SUPABASE_URL</code> +{' '}
-              <code className="text-amber-50">SUPABASE_ANON_KEY</code>), then redeploy.
+              Sign-in is not available yet. Ask your administrator to finish workspace setup.
             </div>
           )}
 
@@ -283,18 +264,17 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 </button>
               </form>
 
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={isSubmitting}
-                className="secondary-button w-full justify-center"
-              >
-                Continue with Google
-              </button>
-
               <p className="text-center text-xs text-slate-500">
                 New here?{' '}
-                <button type="button" onClick={() => setViewMode('wizard')} className="text-link">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSubmitting(false);
+                    setLoginError(null);
+                    setViewMode('wizard');
+                  }}
+                  className="text-link"
+                >
                   Create workspace
                 </button>
               </p>
@@ -465,7 +445,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   </p>
                   <p className="text-sm text-slate-400">
                     {analysisComplete
-                      ? 'After you enter, open Agency Hub → Connect apps and add your own Meta, Google, TikTok, LinkedIn, and WhatsApp credentials. GrowthOS does not use a shared developer account.'
+                      ? 'Next, open Agency Hub → Connect apps, then sign in to each brand’s Instagram, Facebook, TikTok, or other accounts.'
                       : 'Saving your agency profile…'}
                   </p>
                   <div className="mx-auto h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/[0.06]">

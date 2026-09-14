@@ -195,8 +195,10 @@ export function registerSocialRoutes(app: Express) {
       });
       const overrides = await overridesForOrg(auth.orgId);
       const url = buildAuthorizeUrl(platform, state, overrides, redirectUri);
+      console.info('[oauth] authorize url ready', { platform, orgId: auth.orgId, clientId, redirectUri });
       res.json({ success: true, platform, url, externalUrl: url, mock: false });
     } catch (err: any) {
+      console.warn('[oauth] authorize url failed', err?.message);
       res.status(400).json({ success: false, error: err.message });
     }
   });

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ClientProfile, ConnectedPlatform, PlatformType, UserProfile } from '../types';
 import { authFetch } from '../lib/authFetch';
+import { readJsonOrThrow } from '../lib/httpJson';
 import { connectionsToPlatforms, oauthRedirectUri } from '../lib/liveApi';
 import { MetaOnboarding } from './MetaOnboarding';
 import { ProviderOnboarding, type ProviderFamily } from './ProviderOnboarding';
@@ -52,7 +53,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
         const res = await authFetch(`/api/socials/connections/${encodeURIComponent(connectionId)}`, {
           method: 'DELETE',
         });
-        const data = await res.json();
+        const data = await readJsonOrThrow<{ success?: boolean; error?: string }>(res);
         if (!data.success) throw new Error(data.error || 'Could not disconnect account.');
       }
       const updated = platforms.filter((p) => p.id !== id);
@@ -72,7 +73,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   useEffect(() => {
     let cancelled = false;
     void authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`)
-      .then((res) => res.json())
+      .then((res) => readJsonOrThrow<{ success?: boolean; connections?: unknown[] }>(res))
       .then((data) => {
         if (cancelled || !data.success) return;
         const live = connectionsToPlatforms(data.connections || []);
@@ -115,7 +116,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
         setIsOauthLoggingIn(true);
         try {
           const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
-          const payload = await list.json();
+          const payload = await readJsonOrThrow<{ success?: boolean; error?: string; connections?: unknown[] }>(list);
           if (payload.success) {
             const live = connectionsToPlatforms(payload.connections || []);
             setPlatforms(live);
@@ -169,10 +170,10 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
           accessToken: customAccessToken.trim(),
         }),
       });
-      const data = await res.json();
+      const data = await readJsonOrThrow<{ success?: boolean; error?: string }>(res);
       if (data.success) {
         const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
-        const payload = await list.json();
+        const payload = await readJsonOrThrow<{ connections?: unknown[] }>(list);
         const live = connectionsToPlatforms(payload.connections || []);
         setPlatforms(live);
         onUpdatePlatforms(live);
@@ -193,8 +194,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     try {
       const redirectUri = oauthRedirectUri();
       const res = await authFetch(`/api/auth/${selectedChannel}/url?clientId=${encodeURIComponent(client.id)}&redirectUri=${encodeURIComponent(redirectUri)}`);
-      const data = await res.json();
-
+      const data = await readJsonOrThrow<{ success?: boolean; error?: string; url?: string }>(res);
       if (data.url) {
         const popupWidth = 600;
         const popupHeight = 700;
@@ -232,10 +232,10 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
           platform: platformType,
         }),
       });
-      const data = await res.json();
+      const data = await readJsonOrThrow<{ success?: boolean; error?: string }>(res);
       if (data.success) {
         const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
-        const payload = await list.json();
+        const payload = await readJsonOrThrow<{ connections?: unknown[] }>(list);
         const live = connectionsToPlatforms(payload.connections || []);
         setPlatforms(live);
         onUpdatePlatforms(live);
@@ -272,7 +272,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
         const res = await authFetch(
           `/api/auth/${platform}/url?clientId=${encodeURIComponent(client.id)}&redirectUri=${encodeURIComponent(redirectUri)}`
         );
-        const data = await res.json();
+        const data = await readJsonOrThrow<{ success?: boolean; error?: string; url?: string }>(res);
         if (!data.url) throw new Error(data.error || 'Could not start reconnect.');
         const authWindow = window.open(
           data.url,
@@ -305,10 +305,10 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
         method: 'POST',
         body: JSON.stringify({ clientId: client.id, platform: selectedChannel, externalId }),
       });
-      const data = await res.json();
+      const data = await readJsonOrThrow<{ success?: boolean; error?: string }>(res);
       if (!data.success) throw new Error(data.error || 'Could not bind that brand account.');
       const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
-      const payload = await list.json();
+      const payload = await readJsonOrThrow<{ connections?: unknown[] }>(list);
       const live = connectionsToPlatforms(payload.connections || []);
       setPlatforms(live);
       onUpdatePlatforms(live);

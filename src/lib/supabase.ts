@@ -15,6 +15,7 @@ import { MOCK_CAMPAIGN_DATA } from '../data/mockCampaigns';
 import { INITIAL_MOCK_CALENDAR } from '../data/mockCalendar';
 import { readJsonResponse } from './httpJson';
 import { scheduledAtIso } from '../../shared/calendarPublish';
+import { probeGoogleAuthEnabled } from '../../shared/googleAuth';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -36,6 +37,7 @@ function hasValidSupabaseConfig(url?: string | null, key?: string | null): boole
 
 let runtimeSupabaseUrl: string | null = null;
 let runtimeSupabaseAnonKey: string | null = null;
+let runtimeGoogleAuthEnabled: boolean | null = null;
 let bootstrapComplete = false;
 
 export let supabase = createClient(
@@ -51,12 +53,39 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
+export function isGoogleAuthEnabled(): boolean {
+  return runtimeGoogleAuthEnabled === true;
+}
+
+function activeSupabaseUrl(): string {
+  return runtimeSupabaseUrl || supabaseUrl || '';
+}
+
+function activeSupabaseAnonKey(): string {
+  return runtimeSupabaseAnonKey || supabaseAnonKey || '';
+}
+
+export async function refreshGoogleAuthEnabled(): Promise<boolean> {
+  if (!isSupabaseConfigured()) {
+    runtimeGoogleAuthEnabled = false;
+    return false;
+  }
+  runtimeGoogleAuthEnabled = await probeGoogleAuthEnabled(activeSupabaseUrl(), activeSupabaseAnonKey());
+  return runtimeGoogleAuthEnabled;
+}
+
 /** Load Supabase URL/key from build env or /api/public-config (Vercel runtime). */
 export async function bootstrapSupabaseConfig(): Promise<boolean> {
-  if (bootstrapComplete && isSupabaseConfigured()) return true;
+  if (bootstrapComplete && isSupabaseConfigured()) {
+    if (runtimeGoogleAuthEnabled === null) {
+      void refreshGoogleAuthEnabled();
+    }
+    return true;
+  }
 
   if (hasValidSupabaseConfig(supabaseUrl, supabaseAnonKey)) {
     bootstrapComplete = true;
+    void refreshGoogleAuthEnabled();
     return true;
   }
 
@@ -69,6 +98,7 @@ export async function bootstrapSupabaseConfig(): Promise<boolean> {
       configured?: boolean;
       supabaseUrl?: string;
       supabaseAnonKey?: string;
+      googleAuthEnabled?: boolean;
     }>(res);
     if (parsed.ok === false) {
       console.error('Failed to load Supabase public config:', parsed.error);
@@ -79,8 +109,14 @@ export async function bootstrapSupabaseConfig(): Promise<boolean> {
     if (data.configured && hasValidSupabaseConfig(data.supabaseUrl, data.supabaseAnonKey)) {
       runtimeSupabaseUrl = data.supabaseUrl!;
       runtimeSupabaseAnonKey = data.supabaseAnonKey!;
+      if (typeof data.googleAuthEnabled === 'boolean') {
+        runtimeGoogleAuthEnabled = data.googleAuthEnabled;
+      }
       supabase = createClient(data.supabaseUrl!, data.supabaseAnonKey!, AUTH_CLIENT_OPTIONS);
       bootstrapComplete = true;
+      if (runtimeGoogleAuthEnabled === null) {
+        void refreshGoogleAuthEnabled();
+      }
       return true;
     }
   } catch (err) {
@@ -540,21 +576,33 @@ export async function registerUser(
   let data;
   let error;
   try {
-    ({ data, error } = await supabase.auth.signUp({
-    email,
-    password: pass,
-    options: {
-      data: {
-        name: fullName,
-        full_name: fullName,
-        phone,
-        company_name: companyName,
-        avatar,
-        privileges: getDefaultPrivileges('admin'),
+    console.info('[auth] registerUser signUp start');
+    const signUp = supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: {
+          name: fullName,
+          full_name: fullName,
+          phone,
+          company_name: companyName,
+          avatar,
+          privileges: getDefaultPrivileges('admin'),
+        },
       },
-    },
-  }));
+    });
+    ({ data, error } = await Promise.race([
+      signUp,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Registration timed out. Check your connection and try email sign-up again.')),
+          20000
+        )
+      ),
+    ]));
+    console.info('[auth] registerUser signUp done', { hasUser: Boolean(data?.user), hasSession: Boolean(data?.session), error: error?.message });
   } catch (err) {
+    console.warn('[auth] registerUser signUp failed', err);
     throw asAuthError(err);
   }
 
@@ -621,40 +669,33 @@ export async function loginWithGoogle(): Promise<UserProfile> {
     );
   }
 
+  const googleOn = runtimeGoogleAuthEnabled === true || (await refreshGoogleAuthEnabled());
+  if (!googleOn) {
+    throw new Error('Google sign-in is not enabled on this workspace. Use your work email and password.');
+  }
+
   let data;
   let error;
   try {
     ({ data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-      queryParams: { access_type: 'offline', prompt: 'consent' },
-    },
-  }));
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        skipBrowserRedirect: true,
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
+    }));
   } catch (err) {
     throw asAuthError(err);
   }
 
   if (error) throw new Error(error.message);
-
-  // OAuth redirects away from the page; if we somehow stay, wait briefly for session.
-  if (data.url) {
-    window.location.assign(data.url);
+  if (!data.url) {
+    throw new Error('Google sign-in is not available. Use your work email and password.');
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session?.user) {
-    throw new Error('Redirecting to Google sign-in…');
-  }
-
-  if (session.user.email) {
-    await acceptPendingInviteForEmail(session.user.email, session.user.id);
-  }
-  const profile = await ensureProfileFromAuthUser(session.user);
-  return ensureWorkspaceForProfile(profile);
+  window.location.assign(data.url);
+  throw new Error('Redirecting to Google sign-in…');
 }
 
 export async function resetPasswordForEmail(email: string): Promise<void> {

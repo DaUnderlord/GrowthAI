@@ -1,4 +1,5 @@
 import { authFetch } from './authFetch';
+import { readJsonOrThrow } from './httpJson';
 import { supabase } from './supabase';
 
 export type CalendarReadiness = {
@@ -13,7 +14,12 @@ export async function fetchCalendarReadiness(clientId: string): Promise<{
   facebook: CalendarReadiness;
 }> {
   const res = await authFetch(`/api/calendar/readiness?clientId=${encodeURIComponent(clientId)}`);
-  const data = await res.json();
+  const data = await readJsonOrThrow<{
+    success?: boolean;
+    error?: string;
+    instagram?: CalendarReadiness;
+    facebook?: CalendarReadiness;
+  }>(res);
   if (!data.success) throw new Error(data.error || 'Could not load publish readiness.');
   return {
     instagram: data.instagram || { connected: false, canPublish: false },
@@ -26,7 +32,13 @@ export async function flushDuePosts(clientId?: string) {
     method: 'POST',
     body: JSON.stringify(clientId ? { clientId } : {}),
   });
-  const data = await res.json();
+  const data = await readJsonOrThrow<{
+    success?: boolean;
+    error?: string;
+    scanned: number;
+    published: Array<Record<string, unknown>>;
+    failed: Array<Record<string, unknown>>;
+  }>(res);
   if (!data.success) throw new Error(data.error || 'Could not publish due posts.');
   return data as {
     scanned: number;
@@ -40,7 +52,15 @@ export async function publishCalendarItemNow(itemId: string) {
     method: 'POST',
     body: JSON.stringify({}),
   });
-  const data = await res.json();
+  const data = await readJsonOrThrow<{
+    success?: boolean;
+    error?: string;
+    providerPostId?: string;
+    permalink?: string;
+    accountLabel?: string;
+    note?: string;
+    alreadyPublished?: boolean;
+  }>(res);
   if (!data.success) throw new Error(data.error || 'Publish failed.');
   return data as {
     providerPostId?: string;

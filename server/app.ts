@@ -18,20 +18,22 @@ import {
   sendAiError,
 } from "./ai/gemini";
 import { getAppUrl } from "./appUrl";
+import { probeGoogleAuthEnabled } from "../shared/googleAuth";
 
 export function createApp(): Express {
-  getAiClient();
-
   const app = express();
 
   app.use((req, _res, next) => {
     const original = String(
       req.headers['x-vercel-original-path'] ||
         req.headers['x-invoke-path'] ||
+        req.headers['x-forwarded-uri'] ||
         ''
-    );
-    if (original.startsWith('/auth/') && (req.path === '/api' || req.path === '/')) {
-      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    ).split('?')[0];
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    const stripped = req.path === '/api' || req.path === '/';
+    if (stripped && (original.startsWith('/auth/') || (original.startsWith('/api/') && original !== '/api'))) {
+      console.info('[api] restored vercel path', { from: req.path, to: original, method: req.method });
       req.url = `${original}${qs}`;
     }
     next();
@@ -71,14 +73,16 @@ export function createApp(): Express {
   });
 
   // Public browser-safe Supabase config (anon key is publishable).
-  app.get("/api/public-config", (_req, res) => {
+  app.get("/api/public-config", async (_req, res) => {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
     const supabaseAnonKey =
       process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+    const googleAuthEnabled = await probeGoogleAuthEnabled(supabaseUrl, supabaseAnonKey);
     res.json({
       configured: Boolean(supabaseUrl && supabaseAnonKey),
       supabaseUrl,
       supabaseAnonKey,
+      googleAuthEnabled,
     });
   });
 
@@ -312,7 +316,7 @@ Visual Asset URL/Data: ${visualAssetUrl ? visualAssetUrl.substring(0, 100) + '..
 Asset Type: ${visualAssetType || 'image'}
     `;
 
-      const aiClient = getAiClient();
+      const aiClient = await getAiClient();
       if (!aiClient) {
         throw new AiServiceError(
           'Gemini is not configured. Set GEMINI_API_KEY on the server and restart.',
@@ -367,6 +371,12 @@ Asset Type: ${visualAssetType || 'image'}
     } catch (err: any) {
       sendAiError(res, err);
     }
+  });
+
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[api] unhandled', err);
+    if (res.headersSent) return;
+    res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
   });
 
   return app;

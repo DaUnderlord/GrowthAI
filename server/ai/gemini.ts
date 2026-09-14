@@ -1,10 +1,22 @@
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import type { GoogleGenAI } from '@google/genai';
 
 const MAX_PROMPT_CHARS = 24_000;
 const DEFAULT_TIMEOUT_MS = 55_000;
 /** gemini-2.5-flash is blocked for new API keys; prefer 3.x Flash. */
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+
+type GenAiSdk = typeof import('@google/genai');
+
+let genAiSdk: GenAiSdk | null = null;
+
+async function loadGenAiSdk(): Promise<GenAiSdk> {
+  if (!genAiSdk) {
+    console.info('[AI] loading @google/genai');
+    genAiSdk = await import('@google/genai');
+  }
+  return genAiSdk;
+}
 
 function isLegacyGemini25(model: string): boolean {
   return /^gemini-2\.[05]/i.test(model);
@@ -43,7 +55,7 @@ export function getAiStatus() {
   };
 }
 
-export function getAiClient(): GoogleGenAI | null {
+export async function getAiClient(): Promise<GoogleGenAI | null> {
   if (aiClient) return aiClient;
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -51,6 +63,7 @@ export function getAiClient(): GoogleGenAI | null {
     return null;
   }
   try {
+    const { GoogleGenAI } = await loadGenAiSdk();
     aiClient = new GoogleGenAI({
       apiKey,
       httpOptions: {
@@ -106,7 +119,7 @@ export async function generateGrowthAI(
   systemInstruction?: string,
   options?: { temperature?: number; timeoutMs?: number; model?: string; tools?: unknown[] }
 ): Promise<string> {
-  const client = getAiClient();
+  const client = await getAiClient();
   if (!client) {
     throw new AiServiceError(
       'Gemini is not configured. Set GEMINI_API_KEY on the server and restart.',
@@ -142,6 +155,7 @@ export async function generateGeminiContent(opts: {
 }): Promise<string> {
   const temperature = opts.temperature ?? 0.7;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const { ThinkingLevel } = await loadGenAiSdk();
   const models = modelCandidates(opts.model);
   let lastErr: unknown;
 
