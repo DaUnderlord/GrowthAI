@@ -1,37 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import '../server/loadEnv';
+import { createApp } from '../server/app';
 
-type ExpressHandler = (req: VercelRequest, res: VercelResponse) => unknown;
+console.info('[api] creating Express app');
+const app = createApp();
+console.info('[api] Express app ready');
 
-let app: ExpressHandler | null = null;
-let bootError: Error | null = null;
-
-async function loadApp(): Promise<ExpressHandler> {
-  if (app) return app;
-  if (bootError) throw bootError;
+export default function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    console.info('[api] booting Express app');
-    const { createApp } = await import('../server/app');
-    app = createApp() as unknown as ExpressHandler;
-    console.info('[api] Express app ready');
-    return app;
-  } catch (err: any) {
-    bootError = err instanceof Error ? err : new Error(String(err));
-    console.error('[api] Express boot failed', err);
-    throw bootError;
-  }
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  try {
-    const expressApp = await loadApp();
-    return expressApp(req, res);
+    return app(req as any, res as any);
   } catch (err: any) {
     console.error('[api] invocation failed', err);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
-        error: err?.message || 'API failed to start',
+        error: err?.message || 'API request failed',
       });
     }
   }
