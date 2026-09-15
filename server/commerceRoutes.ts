@@ -386,7 +386,9 @@ export function registerCommerceRoutes(app: Express) {
         clientId,
         hasLive: live.hasLive,
         accounts: live.accounts.length,
+        realPosts: live.realPosts.length,
         source: live.source,
+        dataGaps: live.dataGaps,
       });
       const planText = await generateGrowthAI(
         withLiveAccountUser(

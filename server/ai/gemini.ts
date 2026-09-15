@@ -82,6 +82,7 @@ export async function getAiClient(): Promise<GoogleGenAI | null> {
 function truncate(input: string, max = MAX_PROMPT_CHARS): string {
   if (!input) return '';
   if (input.length <= max) return input;
+  console.warn('[AI] prompt truncated', { from: input.length, to: max, hadLivePrefix: input.startsWith('LIVE_CONNECTED_ACCOUNT_DATA') });
   return `${input.slice(0, max)}\n\n[truncated]`;
 }
 

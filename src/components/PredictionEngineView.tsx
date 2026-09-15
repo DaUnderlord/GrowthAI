@@ -60,7 +60,7 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
             <h2 className="text-xl font-bold text-white">AI Virality & Performance Prediction Engine</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Estimate reach and posting windows from this brand's last connected-account sync. Missing metrics stay unknown.
+            Estimate reach from this brand's last-sync followers, 24h reach, and recent provider posts. Posting hour is unknown — we do not store hour-of-day Insights.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs bg-indigo-500/10 px-3 py-1.5 rounded-xl border border-indigo-500/20 text-indigo-300">
@@ -154,7 +154,13 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
           )}
           {prediction ? (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-              {/* Core Prediction Scores */}
+              {prediction.baseline && (
+                <p className="text-[11px] text-slate-400">
+                  Last sync: {prediction.baseline.followers.toLocaleString()} followers ·{' '}
+                  {prediction.baseline.reach24h.toLocaleString()} 24h reach ·{' '}
+                  {prediction.baseline.realPostCount} provider posts
+                </p>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Virality Probability</span>
@@ -171,7 +177,7 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Estimated Reach</span>
                   <span className="text-xl font-extrabold text-white">{prediction.estimatedReach}</span>
-                  <span className="text-[10px] text-slate-400 block mt-1">Organic Impressions</span>
+                  <span className="text-[10px] text-slate-400 block mt-1">Vs last-sync 24h reach</span>
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
@@ -194,7 +200,7 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
                     <Clock className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="text-xs text-slate-400 font-medium">Optimal Posting Window:</span>
+                    <span className="text-xs text-slate-400 font-medium">Posting hour (not in last sync):</span>
                     <h4 className="text-sm font-bold text-white">{prediction.optimalPostingTime}</h4>
                   </div>
                 </div>

@@ -207,7 +207,16 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
     setAiError(null);
     try {
       const result = await callGrowthAi<{ auditReport: string }>('/api/growth/analyze-calendar', withBrandContext(client, {
-        calendarData: calendarItems,
+        calendarData: calendarItems.map((item) => ({
+          date: item.date,
+          time: item.time,
+          platform: item.platform,
+          contentType: item.contentType,
+          topic: item.topic,
+          hookText: item.hookText,
+          status: item.status,
+          aiScore: item.aiScore,
+        })),
         campaignGoal: client.primaryGoal,
         clientName: client.name,
       }));

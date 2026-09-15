@@ -21,7 +21,9 @@ import { getAppUrl } from "./appUrl";
 import { probeGoogleAuthEnabled } from "../shared/googleAuth";
 import { authOf } from "./authMiddleware";
 import {
+  constrainPrediction,
   loadLiveAccountContext,
+  slimCalendarForAi,
   withLiveAccountRules,
   withLiveAccountUser,
   type LiveAccountContext,
@@ -111,7 +113,9 @@ export function createApp(): Express {
       clientId: clientId || null,
       hasLive: ctx.hasLive,
       accounts: ctx.accounts.length,
+      realPosts: ctx.realPosts.length,
       source: ctx.source,
+      dataGaps: ctx.dataGaps,
       updatedAt: ctx.updatedAt,
     });
     return ctx;
@@ -133,7 +137,7 @@ export function createApp(): Express {
 
 Context: Client Name: "${clientName || 'General Client'}", Industry: "${industry || 'E-commerce'}", Target Goal: "${targetGoal || '3x Followers & Sales'}".
 
-Each agent must cite LIVE_CONNECTED_ACCOUNT_DATA when stating this brand's numbers. Predicted ROI is a projection from last-sync metrics, not a guarantee. Respond in clean Markdown with clear agent headers.`);
+The Data Analyst must open with last-sync totals and named recent posts. Other agents may only cite those facts. Predicted ROI is a projection, not a guarantee. If hasLive is false, do not produce a fake 90-day scorecard. Respond in Markdown with agent headers.`);
 
       const userPrompt = withLiveAccountUser(
         inputPrompt || `Run a complete growth audit and strategic roadmap for ${clientName || 'our brand'} to achieve predictable growth in reach, engagement, and conversion revenue over the next 90 days.`,
@@ -155,52 +159,43 @@ Each agent must cite LIVE_CONNECTED_ACCOUNT_DATA when stating this brand's numbe
         return;
       }
       const live = await liveFor(req);
-      const reach24h = live.accounts.reduce((sum, a) => sum + a.reach24h, 0);
 
       const systemPrompt = withLiveAccountRules(`You are the AI Prediction Engine of GrowthOS AI.
-Analyze the provided content idea against LIVE_CONNECTED_ACCOUNT_DATA and output JSON:
+Compare the hook to last-sync posts and totals. Output JSON:
 {
-  "estimatedReach": "string — a range derived from last-sync 24h reach / followers, or \\"unknown\\"",
+  "estimatedReach": "unknown, or a cautious range that does not exceed ~2x followers or ~14x last-sync 24h reach",
   "viralityScore": 0,
   "engagementScore": 0,
-  "conversionProbability": "string percent or \\"unknown\\"",
-  "optimalPostingTime": "string or \\"unknown\\"",
+  "conversionProbability": "unknown unless last-sync conversions exist",
+  "optimalPostingTime": "unknown — we do not have hour-of-day Insights",
   "confidenceScore": 0,
-  "reasoning": "Cite the live metrics you used. If hasLive is false, say connect + Sync first.",
-  "recommendedTweaks": ["...", "...", "..."]
+  "reasoning": "Cite named posts, followers, 24h reach, and saves. If hasLive is false, say connect + Sync first.",
+  "recommendedTweaks": ["tactics that reuse winning last-sync posts"]
 }
-If hasLive is false: estimatedReach "unknown", all scores 0, conversionProbability "unknown", confidenceScore 0.
-Never invent 35,000-style reach. Return ONLY JSON.`);
+Never invent 35,000-style reach. optimalPostingTime must be unknown. Return ONLY JSON.`);
 
       const prompt = withLiveAccountUser(
-        `Platform: ${platform || 'Instagram'}, Content Type: ${contentType || 'Reel'}, Hook: "${hookText}", Target Audience: "${targetAudience || 'Core buyers'}", Industry: "${industry || 'General'}". Predict expected reach, virality score, best time, and key recommendations from last-sync data only.`,
+        `Platform: ${platform || 'Instagram'}, Content Type: ${contentType || 'Reel'}, Hook: "${hookText}", Target Audience: "${targetAudience || 'Core buyers'}", Industry: "${industry || 'General'}".
+Compare this hook to recentProviderPosts. Do not pick a posting hour. Conversion probability is unknown unless last-sync conversions exist.`,
         live
       );
 
       const resultText = await generateGrowthAI(prompt, systemPrompt, { temperature: 0.4 });
 
       const unknownFallback = {
-        estimatedReach: live.hasLive
-          ? `unknown — model did not return JSON (last-sync 24h reach ${reach24h || 'n/a'})`
-          : 'unknown — connect this brand and tap Sync on Social accounts',
+        estimatedReach: 'unknown',
         viralityScore: 0,
         engagementScore: 0,
         conversionProbability: 'unknown',
-        optimalPostingTime: 'unknown',
+        optimalPostingTime: 'unknown — last sync has no hour-of-day Insights',
         confidenceScore: 0,
         reasoning: resultText,
         recommendedTweaks: live.hasLive
-          ? ['Re-run after a successful Sync if metrics look stale']
+          ? ['Reuse the highest-save last-sync post pattern before inventing a new format']
           : ['Connect the brand on Social accounts and tap Sync before predicting reach'],
       };
 
-      const parsedData: any = parseJsonFromModel(resultText, unknownFallback);
-      parsedData.liveDataUsed = live.hasLive;
-      parsedData.liveSource = live.source;
-      parsedData.viralityScore = Number(parsedData.viralityScore) || 0;
-      parsedData.engagementScore = Number(parsedData.engagementScore) || 0;
-      parsedData.confidenceScore = Number(parsedData.confidenceScore) || 0;
-      if (!Array.isArray(parsedData.recommendedTweaks)) parsedData.recommendedTweaks = unknownFallback.recommendedTweaks;
+      const parsedData: any = constrainPrediction(parseJsonFromModel(resultText, unknownFallback), live);
 
       res.json({ success: true, prediction: parsedData, liveContext: live.publicSummary });
     } catch (err: any) {
@@ -218,8 +213,8 @@ Never invent 35,000-style reach. Return ONLY JSON.`);
       const live = await liveFor(req);
 
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Content Optimization Agent.
-Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure, a cluster of 15 targeted SEO Hashtags, and 3 CTA Strategies.
-Tailor copy to the connected platforms and last-sync performance. If a selected post's metrics are provided, reference them. Respond in clean structured Markdown.`);
+Generate 3 hooks, 2 captions, 15 hashtags, and 3 CTAs for the connected platforms.
+Each hook/caption must say which last-sync post or metric it is copying (saves, reach, caption pattern). If there are no recent posts, write process advice and do not fake winning examples. Markdown.`);
 
       const prompt = withLiveAccountUser(
         `Topic: "${topic}", Target Channel: "${channel}", Main Goal: "${goal}", Audience: "${audience}".
@@ -288,21 +283,20 @@ Search the public web for this competitor and compare only against this brand's 
       const live = await liveFor(req);
 
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Content Calendar Audit Engine.
-Analyze the provided monthly content calendar for "${clientName || 'Client'}" against campaign goal: "${campaignGoal || 'Drive engagement and sales'}".
-Evaluate against this brand's connected platforms and last-sync performance:
+Analyze the calendar for "${clientName || 'Client'}" against goal: "${campaignGoal || 'Drive engagement and sales'}".
+Ground format advice in last-sync platforms and recent provider posts. Do not invent a best posting hour.
+Evaluate:
 1. Overall Quality Score (0-100)
-2. Content Pillar Balance (Educational, Promotional, Social Proof, Viral Curiosity %)
-3. Top 3 Strengths
-4. Top 3 Critical Weaknesses & Content Gaps
-5. Posting Time & Format Optimizations grounded in last-sync accounts
-6. Specific 1-Click Suggestions to improve weak posts.
+2. Content Pillar Balance
+3. Top 3 Strengths (cite calendar rows)
+4. Top 3 Gaps vs last-sync winning posts
+5. Format suggestions (Reel vs carousel etc.) from last-sync posts
+6. Specific rewrites for weak hooks.
 
-Respond in structured Markdown.`);
+Markdown.`);
 
-      const userPrompt = withLiveAccountUser(
-        `Content Calendar Data: ${typeof calendarData === 'string' ? calendarData : JSON.stringify(calendarData, null, 2)}`,
-        live
-      );
+      const slim = slimCalendarForAi(calendarData);
+      const userPrompt = withLiveAccountUser(`Content Calendar Data: ${JSON.stringify(slim)}`, live);
 
       const resultText = await generateGrowthAI(userPrompt, systemPrompt);
       res.json({ success: true, auditReport: resultText, liveContext: live.publicSummary });
@@ -317,16 +311,9 @@ Respond in structured Markdown.`);
       const live = await liveFor(req);
 
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Sales Funnel & Retargeting Strategy Engine.
-Generate a complete 5-stage sales funnel and 3 high-converting audience retargeting scripts for campaign "${campaignName}".
-Use this brand's connected platforms and last-sync spend/conversion numbers. If spend is 0 or unknown, do not invent ROAS.
-Include:
-- Stage 1: Top of Funnel (Attraction Hook)
-- Stage 2: Middle of Funnel (Engagement & Reel Savers)
-- Stage 3: High Intent Trigger (DM Auto-responder Lead Magnet)
-- Stage 4: Retargeting Pool Script (Ad copy for abandoned warm leads)
-- Stage 5: Bottom of Funnel Conversion Urgency Call-to-action.
-
-Respond in structured Markdown.`);
+Build a 5-stage funnel for "${campaignName}" using connected platforms and last-sync posts/spend.
+If spend or conversions are 0, ROAS is unknown — do not invent it. Reuse winning last-sync post captions in TOFU/MOFU copy.
+Include stages 1–5 (hook, saver content, DM lead, retargeting, conversion CTA). Markdown.`);
 
       const prompt = withLiveAccountUser(
         `Campaign: "${campaignName}", Goal: "${primaryGoal}", Audience: "${targetAudience}", Monthly Ad Budget: "${budget ?? 'unknown'}".`,
@@ -346,22 +333,15 @@ Respond in structured Markdown.`);
       const live = await liveFor(req);
 
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Multimodal Creative Director & Visual Analyst.
-You analyze content marketing graphics and video thumbnails/frames against scheduled calendar topics, campaign goals, and this brand's last-sync performance.
-
-Analyze the visual creative for:
-1. Visual Appeal & Hook Score (0-100)
-2. Topic & Calendar Relevance Match Score (0-100%)
-3. Predicted Campaign Success Rate (0-100%) — if hasLive is false, set this to 0 and explain
-4. Visual Hook Audit (Thumb-stop power, typography legibility, contrast, brand logo placement)
-5. Actionable Design Tweaks for Video Editors/Designers before posting.
-
-Return ONLY valid JSON matching this schema:
+Score the image for hook power and match to the calendar topic. Compare on-image text to last-sync winning posts when present.
+predictedSuccessRate must be 0 if hasLive is false. Do not invent posting times.
+Return ONLY JSON:
 {
   "visualScore": 0,
   "campaignGoalMatchPct": 0,
   "predictedSuccessRate": 0,
-  "visualHookAudit": "Cite live account context if available.",
-  "relevanceAnalysis": "Explanation of how well this graphic/video relates to the calendar topic and hook.",
+  "visualHookAudit": "What the image actually shows vs last-sync posts.",
+  "relevanceAnalysis": "Calendar topic / hook match.",
   "designTweaks": ["...", "...", "..."]
 }`);
 

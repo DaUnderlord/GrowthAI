@@ -55,34 +55,37 @@ export async function rebuildClientInsights(clientId: string, orgId: string) {
   ];
 
   const posts = rows.flatMap((r) =>
-    Array.isArray((r as any).posts) ? (r as any).posts : []
+    (Array.isArray((r as any).posts) ? (r as any).posts : []).map((post: any) => ({
+      ...post,
+      platform: post.platform || r.platform,
+    }))
   );
-  // posts live on stats at sync time — also reconstruct from connection-level metrics
-  const snapshotPosts =
-    posts.length > 0
-      ? posts
-      : rows
-          .filter((r) => Number(r.reach_24h || r.impressions_24h) > 0)
-          .map((r) => ({
-            id: `${r.platform}-${r.id}`,
-            title: `${r.account_name} last 24h`,
-            platform: r.platform,
-            postType: 'Reel',
-            postDate: new Date().toISOString().slice(0, 10),
-            reach: Number(r.reach_24h || 0),
-            impressions: Number(r.impressions_24h || 0),
-            saves: 0,
-            shares: 0,
-            likes: Number(r.engagement_24h || 0),
-            comments: 0,
-            clicks: Number(r.clicks_24h || 0),
-            conversions: Number(r.conversions_30d || 0),
-            viralityScore: clamp(Number(r.health_score || 0)),
-            status: Number(r.health_score || 0) >= 80 ? 'performing' : 'underperforming',
-            reboostRecommended: Number(r.reach_24h || 0) > 0 && Number(r.health_score || 0) < 70,
-            hookText: r.account_name,
-            source: 'live_sync',
-          }));
+  const snapshotPosts = posts
+    .filter((post: any) => post && post.id && !/last 24h/i.test(String(post.title || '')))
+    .map((post: any) => ({
+      id: post.id,
+      title: String(post.title || post.caption || 'Untitled').slice(0, 120),
+      platform: post.platform,
+      postType: post.postType || 'Reel',
+      postDate: post.postDate || post.timestamp || null,
+      reach: Number(post.reach || 0),
+      impressions: Number(post.impressions || 0),
+      saves: Number(post.saves || 0),
+      shares: Number(post.shares || 0),
+      likes: Number(post.likes || 0),
+      comments: Number(post.comments || 0),
+      clicks: Number(post.clicks || 0),
+      conversions: Number(post.conversions || 0),
+      viralityScore: clamp(
+        ((Number(post.saves || 0) + Number(post.shares || 0)) /
+          Math.max(Number(post.impressions || post.reach || 1), 1)) *
+          400
+      ),
+      status: Number(post.saves || 0) >= 20 ? 'performing' : 'underperforming',
+      reboostRecommended: Number(post.reach || 0) > 0 && Number(post.saves || 0) < 5,
+      hookText: String(post.hookText || post.title || post.caption || '').slice(0, 160),
+      source: 'provider_media',
+    }));
 
   const totalReach = Math.max(reach, 1);
   const attribution = rows.map((r) => {

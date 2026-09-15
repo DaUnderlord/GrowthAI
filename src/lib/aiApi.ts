@@ -15,6 +15,8 @@ export type LiveContextSummary = {
   updatedAt: string | null;
   accountCount: number;
   platforms: string[];
+  realPostCount?: number;
+  dataGaps?: string[];
 };
 
 export function withBrandContext(

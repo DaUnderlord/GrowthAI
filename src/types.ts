@@ -159,6 +159,7 @@ export interface PostPerformance {
   status: 'viral' | 'performing' | 'underperforming' | 'decaying';
   reboostRecommended: boolean;
   hookText: string;
+  source?: string;
 }
 
 export interface AudiencePersona {
@@ -213,6 +214,13 @@ export interface PredictionResult {
   recommendedTweaks: string[];
   liveDataUsed?: boolean;
   liveSource?: string;
+  dataGaps?: string[];
+  baseline?: {
+    followers: number;
+    reach24h: number;
+    engagement24h: number;
+    realPostCount: number;
+  };
 }
 
 export interface BlueprintSection {

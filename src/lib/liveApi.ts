@@ -13,7 +13,14 @@ export type LiveInsights = {
   personas?: AudiencePersona[];
   attribution?: ConversionPath[];
   posts?: PostPerformance[];
-  demographics?: { notes?: string[] };
+  demographics?: {
+    notes?: string[];
+    followers?: number;
+    reach?: number;
+    spend?: number;
+    impressions?: number;
+    engagement?: number;
+  };
   updated_at?: string;
 };
 

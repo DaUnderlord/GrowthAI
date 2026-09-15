@@ -1923,27 +1923,32 @@ async function rebuildClientInsights(clientId, orgId) {
     }
   ];
   const posts = rows.flatMap(
-    (r) => Array.isArray(r.posts) ? r.posts : []
+    (r) => (Array.isArray(r.posts) ? r.posts : []).map((post) => ({
+      ...post,
+      platform: post.platform || r.platform
+    }))
   );
-  const snapshotPosts = posts.length > 0 ? posts : rows.filter((r) => Number(r.reach_24h || r.impressions_24h) > 0).map((r) => ({
-    id: `${r.platform}-${r.id}`,
-    title: `${r.account_name} last 24h`,
-    platform: r.platform,
-    postType: "Reel",
-    postDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
-    reach: Number(r.reach_24h || 0),
-    impressions: Number(r.impressions_24h || 0),
-    saves: 0,
-    shares: 0,
-    likes: Number(r.engagement_24h || 0),
-    comments: 0,
-    clicks: Number(r.clicks_24h || 0),
-    conversions: Number(r.conversions_30d || 0),
-    viralityScore: clamp(Number(r.health_score || 0)),
-    status: Number(r.health_score || 0) >= 80 ? "performing" : "underperforming",
-    reboostRecommended: Number(r.reach_24h || 0) > 0 && Number(r.health_score || 0) < 70,
-    hookText: r.account_name,
-    source: "live_sync"
+  const snapshotPosts = posts.filter((post) => post && post.id && !/last 24h/i.test(String(post.title || ""))).map((post) => ({
+    id: post.id,
+    title: String(post.title || post.caption || "Untitled").slice(0, 120),
+    platform: post.platform,
+    postType: post.postType || "Reel",
+    postDate: post.postDate || post.timestamp || null,
+    reach: Number(post.reach || 0),
+    impressions: Number(post.impressions || 0),
+    saves: Number(post.saves || 0),
+    shares: Number(post.shares || 0),
+    likes: Number(post.likes || 0),
+    comments: Number(post.comments || 0),
+    clicks: Number(post.clicks || 0),
+    conversions: Number(post.conversions || 0),
+    viralityScore: clamp(
+      (Number(post.saves || 0) + Number(post.shares || 0)) / Math.max(Number(post.impressions || post.reach || 1), 1) * 400
+    ),
+    status: Number(post.saves || 0) >= 20 ? "performing" : "underperforming",
+    reboostRecommended: Number(post.reach || 0) > 0 && Number(post.saves || 0) < 5,
+    hookText: String(post.hookText || post.title || post.caption || "").slice(0, 160),
+    source: "provider_media"
   }));
   const totalReach = Math.max(reach, 1);
   const attribution = rows.map((r) => {
@@ -3392,6 +3397,7 @@ async function getAiClient() {
 function truncate(input, max = MAX_PROMPT_CHARS) {
   if (!input) return "";
   if (input.length <= max) return input;
+  console.warn("[AI] prompt truncated", { from: input.length, to: max, hadLivePrefix: input.startsWith("LIVE_CONNECTED_ACCOUNT_DATA") });
   return `${input.slice(0, max)}
 
 [truncated]`;
@@ -3537,18 +3543,32 @@ function sendAiError(res, err) {
 }
 
 // server/ai/liveContext.ts
+var LIVE_BLOCK_MAX = 9e3;
+var TASK_BUDGET = 24e3;
 var EMPTY = {
   hasLive: false,
   source: "none",
   updatedAt: null,
   accounts: [],
-  promptBlock: "LIVE_CONNECTED_ACCOUNT_DATA: none. No social account has been synced for this brand. Do not invent follower counts, reach, spend, or ROAS. Say the numbers are unknown and that the user should connect the brand and tap Sync on Social accounts.",
-  publicSummary: { hasLive: false, source: "none", updatedAt: null, accountCount: 0, platforms: [] }
+  realPosts: [],
+  dataGaps: ["No social account has been synced for this brand."],
+  promptBlock: "LIVE_CONNECTED_ACCOUNT_DATA: none. No social account has been synced for this brand. Do not invent follower counts, reach, spend, posting times, or ROAS. Say those numbers are unknown and that the user should connect the brand and tap Sync on Social accounts.",
+  publicSummary: {
+    hasLive: false,
+    source: "none",
+    updatedAt: null,
+    accountCount: 0,
+    platforms: [],
+    realPostCount: 0,
+    dataGaps: ["No social account has been synced for this brand."]
+  }
 };
-var LIVE_ACCOUNT_AI_RULES = `You MUST use LIVE_CONNECTED_ACCOUNT_DATA in the user message as the only source of this brand's account facts.
-- Do not invent followers, reach, impressions, spend, clicks, conversions, or ROAS.
-- If a metric is missing, write "unknown".
-- Ground recommendations in the connected platforms and last-sync numbers.
+var LIVE_ACCOUNT_AI_RULES = `You MUST treat LIVE_CONNECTED_ACCOUNT_DATA as the only source of this brand's account facts.
+- Cite connected platforms, last-sync totals, and named recent posts when you recommend a tactic.
+- Do not invent followers, reach, impressions, spend, clicks, conversions, ROAS, or posting-hour winners.
+- If a field is listed under dataGaps or missing, write "unknown".
+- Hour-of-day performance is never in this snapshot \u2014 posting time must be "unknown" unless the calendar task itself includes a scheduled time.
+- Derived scores (growth_score, virality_score) are formulas from last-sync aggregates, not forecasts. Do not treat them as predicted future performance.
 - If hasLive is false, say so first, then give process advice only (connect this brand on Social accounts and tap Sync).`;
 function withLiveAccountRules(systemPrompt, _ctx) {
   return `${systemPrompt}
@@ -3556,24 +3576,106 @@ function withLiveAccountRules(systemPrompt, _ctx) {
 ${LIVE_ACCOUNT_AI_RULES}`;
 }
 function withLiveAccountUser(userPrompt, ctx) {
-  return `${userPrompt}
+  const live = ctx.promptBlock.slice(0, LIVE_BLOCK_MAX);
+  const budget = Math.max(1e3, TASK_BUDGET - live.length - 24);
+  const task = userPrompt.length > budget ? `${userPrompt.slice(0, budget)}
 
-${ctx.promptBlock}`;
+[task truncated]` : userPrompt;
+  return `${live}
+
+---
+TASK:
+${task}`;
+}
+function isSyntheticRollup(post) {
+  const title = String(post?.title || "");
+  const id = String(post?.id || "");
+  return /last 24h/i.test(title) || post?.source === "live_sync" && /^(instagram|facebook|tiktok|youtube|linkedin|meta_ads)-/i.test(id);
+}
+function isRealProviderPost(post) {
+  if (!post || typeof post !== "object" || isSyntheticRollup(post)) return false;
+  const id = String(post.id || "").trim();
+  const title = String(post.title || post.caption || post.hookText || "").trim();
+  if (!id || id.length < 5 || !title) return false;
+  return true;
+}
+function normalizePost(post, fallbackPlatform) {
+  return {
+    id: String(post.id),
+    title: String(post.title || post.caption || post.hookText || "Untitled").slice(0, 120),
+    platform: String(post.platform || fallbackPlatform || ""),
+    postDate: post.postDate || post.timestamp || void 0,
+    reach: Number(post.reach || 0),
+    impressions: Number(post.impressions || 0),
+    saves: Number(post.saves || 0),
+    shares: Number(post.shares || 0),
+    likes: Number(post.likes || 0),
+    comments: Number(post.comments || 0),
+    clicks: Number(post.clicks || 0)
+  };
+}
+function topAudience(demo) {
+  if (!demo || typeof demo !== "object") return [];
+  const merged = {};
+  for (const bag of [demo.ageGender, demo.adsAgeGender, demo.gender, demo.age]) {
+    if (!bag || typeof bag !== "object") continue;
+    for (const [key, value] of Object.entries(bag)) {
+      const n = Number(value || 0);
+      if (n > 0) merged[String(key)] = (merged[String(key)] || 0) + n;
+    }
+  }
+  return Object.entries(merged).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([label, value]) => ({ label, value }));
+}
+function constrainPrediction(parsed, ctx) {
+  const followers = ctx.accounts.reduce((sum, a) => sum + a.followers, 0);
+  const reach24h = ctx.accounts.reduce((sum, a) => sum + a.reach24h, 0);
+  const engagement24h = ctx.accounts.reduce((sum, a) => sum + a.engagement24h, 0);
+  parsed.baseline = { followers, reach24h, engagement24h, realPostCount: ctx.realPosts.length };
+  parsed.dataGaps = ctx.dataGaps;
+  parsed.liveDataUsed = ctx.hasLive;
+  parsed.liveSource = ctx.source;
+  parsed.optimalPostingTime = "unknown \u2014 last sync has no hour-of-day Insights";
+  parsed.viralityScore = Number(parsed.viralityScore) || 0;
+  parsed.engagementScore = Number(parsed.engagementScore) || 0;
+  parsed.confidenceScore = Number(parsed.confidenceScore) || 0;
+  if (!Array.isArray(parsed.recommendedTweaks)) parsed.recommendedTweaks = [];
+  if (!ctx.hasLive) {
+    parsed.estimatedReach = "unknown \u2014 connect this brand and tap Sync on Social accounts";
+    parsed.viralityScore = 0;
+    parsed.engagementScore = 0;
+    parsed.conversionProbability = "unknown";
+    parsed.confidenceScore = 0;
+    return parsed;
+  }
+  const cap = Math.max(followers * 2, reach24h * 14, 1);
+  const nums = String(parsed.estimatedReach || "").match(/\d[\d,]*/g)?.map((n) => Number(n.replace(/,/g, ""))).filter((n) => Number.isFinite(n) && n > 0) || [];
+  if (!nums.length || nums.some((n) => n > cap * 1.5)) {
+    parsed.estimatedReach = reach24h > 0 ? `unknown as a forecast \u2014 last-sync 24h reach is ${reach24h.toLocaleString()} (followers ${followers.toLocaleString()}). Do not treat a larger invented range as measured.` : followers > 0 ? `unknown as a forecast \u2014 last-sync followers ${followers.toLocaleString()}, 24h reach 0` : "unknown";
+    parsed.confidenceScore = Math.min(Number(parsed.confidenceScore) || 0, 30);
+  }
+  const saveLeader = [...ctx.realPosts].sort((a, b) => b.saves - a.saves)[0];
+  if (saveLeader?.title && parsed.recommendedTweaks.length < 3) {
+    parsed.recommendedTweaks = [
+      `Repeat the pattern of last-sync post \u201C${saveLeader.title}\u201D (${saveLeader.saves} saves, ${saveLeader.reach} reach)`,
+      ...parsed.recommendedTweaks
+    ].slice(0, 5);
+  }
+  return parsed;
 }
 async function loadLiveAccountContext(orgId, clientId) {
   if (!orgId || !String(clientId || "").trim()) return EMPTY;
   const admin2 = getSupabaseAdmin();
   const [connRes, insightRes] = await Promise.all([
     admin2.from("social_connections").select(
-      "platform, account_name, status, followers, reach_24h, engagement_24h, impressions_24h, clicks_24h, spend_30d, conversions_30d, revenue_30d, health_score, last_sync, last_error"
+      "platform, account_name, status, followers, reach_24h, engagement_24h, impressions_24h, clicks_24h, spend_30d, conversions_30d, revenue_30d, health_score, last_sync, last_error, posts, demographics"
     ).eq("org_id", orgId).eq("client_id", clientId),
     admin2.from("client_live_insights").select("*").eq("org_id", orgId).eq("client_id", clientId).maybeSingle()
   ]);
   if (connRes.error) console.warn("[ai] live context connections failed", connRes.error.message);
   if (insightRes.error) console.warn("[ai] live context insights failed", insightRes.error.message);
-  const connections = connRes.data;
+  const connections = connRes.data || [];
   const insights = insightRes.data;
-  const accounts = (connections || []).map((row) => ({
+  const accounts = connections.map((row) => ({
     platform: String(row.platform || ""),
     accountName: String(row.account_name || ""),
     status: String(row.status || ""),
@@ -3589,62 +3691,142 @@ async function loadLiveAccountContext(orgId, clientId) {
     lastSync: row.last_sync || null,
     lastError: row.last_error || null
   }));
-  const liveInsights = insights?.source === "live_sync" ? insights : null;
-  const hasLive = Boolean(liveInsights) || accounts.some((a) => a.status === "connected" && (a.followers > 0 || a.reach24h > 0 || a.lastSync));
-  const posts = Array.isArray(liveInsights?.posts) ? liveInsights.posts.slice(0, 8).map((post) => ({
-    id: post.id,
-    title: post.title,
-    platform: post.platform,
-    reach: post.reach,
-    impressions: post.impressions,
-    saves: post.saves,
-    shares: post.shares,
-    likes: post.likes,
-    clicks: post.clicks,
-    conversions: post.conversions,
-    viralityScore: post.viralityScore,
-    status: post.status,
-    hookText: post.hookText
-  })) : [];
-  const personas = Array.isArray(liveInsights?.personas) ? liveInsights.personas.slice(0, 3).map((p) => ({
-    name: p.name,
-    percentage: p.percentage,
-    ageRange: p.ageRange,
-    source: p.source
-  })) : [];
-  const payload = {
+  const fromConnections = [];
+  let droppedSynthetic = 0;
+  for (const row of connections) {
+    for (const post of Array.isArray(row.posts) ? row.posts : []) {
+      if (isSyntheticRollup(post)) {
+        droppedSynthetic += 1;
+        continue;
+      }
+      if (isRealProviderPost(post)) fromConnections.push(normalizePost(post, row.platform));
+    }
+  }
+  const fromInsights = (Array.isArray(insights?.posts) ? insights.posts : []).filter((post) => {
+    if (isSyntheticRollup(post)) {
+      droppedSynthetic += 1;
+      return false;
+    }
+    return isRealProviderPost(post);
+  }).map((post) => normalizePost(post, ""));
+  const seen = /* @__PURE__ */ new Set();
+  const realPosts = [...fromConnections, ...fromInsights].filter((post) => {
+    if (seen.has(post.id)) return false;
+    seen.add(post.id);
+    return true;
+  }).sort((a, b) => b.saves + b.reach - (a.saves + a.reach)).slice(0, 8);
+  const audience = connections.flatMap((row) => topAudience(row.demographics)).slice(0, 4);
+  const followers = accounts.reduce((s, a) => s + a.followers, 0);
+  const reach24h = accounts.reduce((s, a) => s + a.reach24h, 0);
+  const engagement24h = accounts.reduce((s, a) => s + a.engagement24h, 0);
+  const spend30d = accounts.reduce((s, a) => s + a.spend30d, 0);
+  const conversions30d = accounts.reduce((s, a) => s + a.conversions30d, 0);
+  const connected = accounts.filter((a) => a.status === "connected");
+  const metricLive = connected.some(
+    (a) => a.followers > 0 || a.reach24h > 0 || a.impressions24h > 0 || a.engagement24h > 0 || a.spend30d > 0
+  );
+  const hasLive = metricLive || realPosts.length > 0;
+  const source = hasLive ? insights?.source === "live_sync" ? "live_sync" : "connections" : connected.length ? "connected_empty" : "none";
+  const dataGaps = [];
+  if (!hasLive) {
+    dataGaps.push(
+      connected.length ? "Accounts are connected but last sync has no followers, reach, posts, or spend. Tap Sync or check last_error on Social accounts." : "No social account has been synced for this brand."
+    );
+  }
+  if (!realPosts.length) dataGaps.push("No individual provider posts (e.g. Instagram media) in last sync.");
+  if (!spend30d) dataGaps.push("No ads spend in last sync.");
+  if (!conversions30d) dataGaps.push("No conversions/purchases in last sync.");
+  dataGaps.push("No hour-of-day posting performance in last sync.");
+  if (!audience.length) dataGaps.push("No age/gender audience breakdown in last sync.");
+  const topPost = realPosts[0];
+  const brief = {
     hasLive,
-    source: liveInsights?.source || (accounts.length ? "connections_only" : "none"),
-    updatedAt: liveInsights?.updated_at || accounts.find((a) => a.lastSync)?.lastSync || null,
-    accounts,
-    scores: liveInsights ? {
-      growth_score: liveInsights.growth_score,
-      virality_score: liveInsights.virality_score,
-      engagement_health: liveInsights.engagement_health,
-      conversion_score: liveInsights.conversion_score,
-      roi_multiplier: liveInsights.roi_multiplier
+    source,
+    updatedAt: insights?.updated_at || accounts.find((a) => a.lastSync)?.lastSync || null,
+    accounts: accounts.map((a) => ({
+      platform: a.platform,
+      accountName: a.accountName,
+      status: a.status,
+      followers: a.followers,
+      reach24h: a.reach24h,
+      engagement24h: a.engagement24h,
+      impressions24h: a.impressions24h,
+      clicks24h: a.clicks24h,
+      spend30d: a.spend30d,
+      conversions30d: a.conversions30d,
+      revenue30d: a.revenue30d,
+      lastSync: a.lastSync,
+      lastError: a.lastError
+    })),
+    totals: { followers, reach24h, engagement24h, spend30d, conversions30d },
+    engagementRate: reach24h ? Number((engagement24h / reach24h).toFixed(4)) : 0,
+    recentProviderPosts: realPosts,
+    winningPost: topPost && (topPost.saves > 0 || topPost.reach > 0) ? {
+      title: topPost.title,
+      platform: topPost.platform,
+      reach: topPost.reach,
+      saves: topPost.saves,
+      likes: topPost.likes
     } : null,
-    totals: liveInsights?.demographics || null,
-    trends: Array.isArray(liveInsights?.trends) ? liveInsights.trends.slice(-3) : [],
-    posts,
-    personas
+    audienceFromProvider: audience,
+    derivedScoresLabel: "formula from last-sync aggregates \u2014 not a forecast",
+    derivedScores: insights ? {
+      growth_score: insights.growth_score,
+      virality_score: insights.virality_score,
+      engagement_health: insights.engagement_health,
+      conversion_score: insights.conversion_score,
+      roi_multiplier: insights.roi_multiplier
+    } : null,
+    dataGaps
   };
-  const promptBlock = `LIVE_CONNECTED_ACCOUNT_DATA (JSON, last provider sync \u2014 not invented):
-${JSON.stringify(payload).slice(0, 12e3)}`;
+  const promptBlock = `LIVE_CONNECTED_ACCOUNT_DATA (last provider sync only \u2014 not invented):
+${JSON.stringify(brief).slice(0, LIVE_BLOCK_MAX)}`;
+  console.info("[ai] live snapshot", {
+    clientId,
+    hasLive,
+    source,
+    accounts: accounts.length,
+    connected: connected.length,
+    realPosts: realPosts.length,
+    droppedSyntheticPosts: droppedSynthetic,
+    followers,
+    reach24h,
+    spend30d,
+    audienceSegments: audience.length,
+    dataGaps: dataGaps.length,
+    briefChars: promptBlock.length
+  });
   return {
     hasLive,
-    source: payload.source,
-    updatedAt: payload.updatedAt,
+    source,
+    updatedAt: brief.updatedAt,
     accounts,
+    realPosts,
+    dataGaps,
     promptBlock,
     publicSummary: {
       hasLive,
-      source: payload.source,
-      updatedAt: payload.updatedAt,
+      source,
+      updatedAt: brief.updatedAt,
       accountCount: accounts.length,
-      platforms: [...new Set(accounts.map((a) => a.platform).filter(Boolean))]
+      platforms: [...new Set(accounts.map((a) => a.platform).filter(Boolean))],
+      realPostCount: realPosts.length,
+      dataGaps
     }
   };
+}
+function slimCalendarForAi(calendarData) {
+  const items = Array.isArray(calendarData) ? calendarData : [];
+  return items.slice(0, 40).map((item) => ({
+    date: item.date || item.scheduledAt || "",
+    time: item.time || "",
+    platform: item.platform || "",
+    contentType: item.contentType || item.postType || "",
+    topic: String(item.topic || item.title || "").slice(0, 160),
+    hookText: String(item.hookText || "").slice(0, 180),
+    status: item.status || "",
+    aiScore: item.aiScore ?? null
+  }));
 }
 
 // server/commerceRoutes.ts
@@ -3954,7 +4136,9 @@ function registerCommerceRoutes(app2) {
         clientId,
         hasLive: live.hasLive,
         accounts: live.accounts.length,
-        source: live.source
+        realPosts: live.realPosts.length,
+        source: live.source,
+        dataGaps: live.dataGaps
       });
       const planText = await generateGrowthAI(
         withLiveAccountUser(
@@ -4161,7 +4345,9 @@ function createApp() {
       clientId: clientId || null,
       hasLive: ctx.hasLive,
       accounts: ctx.accounts.length,
+      realPosts: ctx.realPosts.length,
       source: ctx.source,
+      dataGaps: ctx.dataGaps,
       updatedAt: ctx.updatedAt
     });
     return ctx;
@@ -4181,7 +4367,7 @@ function createApp() {
 
 Context: Client Name: "${clientName || "General Client"}", Industry: "${industry || "E-commerce"}", Target Goal: "${targetGoal || "3x Followers & Sales"}".
 
-Each agent must cite LIVE_CONNECTED_ACCOUNT_DATA when stating this brand's numbers. Predicted ROI is a projection from last-sync metrics, not a guarantee. Respond in clean Markdown with clear agent headers.`);
+The Data Analyst must open with last-sync totals and named recent posts. Other agents may only cite those facts. Predicted ROI is a projection, not a guarantee. If hasLive is false, do not produce a fake 90-day scorecard. Respond in Markdown with agent headers.`);
       const userPrompt = withLiveAccountUser(
         inputPrompt || `Run a complete growth audit and strategic roadmap for ${clientName || "our brand"} to achieve predictable growth in reach, engagement, and conversion revenue over the next 90 days.`,
         live
@@ -4200,43 +4386,36 @@ Each agent must cite LIVE_CONNECTED_ACCOUNT_DATA when stating this brand's numbe
         return;
       }
       const live = await liveFor(req);
-      const reach24h = live.accounts.reduce((sum, a) => sum + a.reach24h, 0);
       const systemPrompt = withLiveAccountRules(`You are the AI Prediction Engine of GrowthOS AI.
-Analyze the provided content idea against LIVE_CONNECTED_ACCOUNT_DATA and output JSON:
+Compare the hook to last-sync posts and totals. Output JSON:
 {
-  "estimatedReach": "string \u2014 a range derived from last-sync 24h reach / followers, or \\"unknown\\"",
+  "estimatedReach": "unknown, or a cautious range that does not exceed ~2x followers or ~14x last-sync 24h reach",
   "viralityScore": 0,
   "engagementScore": 0,
-  "conversionProbability": "string percent or \\"unknown\\"",
-  "optimalPostingTime": "string or \\"unknown\\"",
+  "conversionProbability": "unknown unless last-sync conversions exist",
+  "optimalPostingTime": "unknown \u2014 we do not have hour-of-day Insights",
   "confidenceScore": 0,
-  "reasoning": "Cite the live metrics you used. If hasLive is false, say connect + Sync first.",
-  "recommendedTweaks": ["...", "...", "..."]
+  "reasoning": "Cite named posts, followers, 24h reach, and saves. If hasLive is false, say connect + Sync first.",
+  "recommendedTweaks": ["tactics that reuse winning last-sync posts"]
 }
-If hasLive is false: estimatedReach "unknown", all scores 0, conversionProbability "unknown", confidenceScore 0.
-Never invent 35,000-style reach. Return ONLY JSON.`);
+Never invent 35,000-style reach. optimalPostingTime must be unknown. Return ONLY JSON.`);
       const prompt = withLiveAccountUser(
-        `Platform: ${platform || "Instagram"}, Content Type: ${contentType || "Reel"}, Hook: "${hookText}", Target Audience: "${targetAudience || "Core buyers"}", Industry: "${industry || "General"}". Predict expected reach, virality score, best time, and key recommendations from last-sync data only.`,
+        `Platform: ${platform || "Instagram"}, Content Type: ${contentType || "Reel"}, Hook: "${hookText}", Target Audience: "${targetAudience || "Core buyers"}", Industry: "${industry || "General"}".
+Compare this hook to recentProviderPosts. Do not pick a posting hour. Conversion probability is unknown unless last-sync conversions exist.`,
         live
       );
       const resultText = await generateGrowthAI(prompt, systemPrompt, { temperature: 0.4 });
       const unknownFallback = {
-        estimatedReach: live.hasLive ? `unknown \u2014 model did not return JSON (last-sync 24h reach ${reach24h || "n/a"})` : "unknown \u2014 connect this brand and tap Sync on Social accounts",
+        estimatedReach: "unknown",
         viralityScore: 0,
         engagementScore: 0,
         conversionProbability: "unknown",
-        optimalPostingTime: "unknown",
+        optimalPostingTime: "unknown \u2014 last sync has no hour-of-day Insights",
         confidenceScore: 0,
         reasoning: resultText,
-        recommendedTweaks: live.hasLive ? ["Re-run after a successful Sync if metrics look stale"] : ["Connect the brand on Social accounts and tap Sync before predicting reach"]
+        recommendedTweaks: live.hasLive ? ["Reuse the highest-save last-sync post pattern before inventing a new format"] : ["Connect the brand on Social accounts and tap Sync before predicting reach"]
       };
-      const parsedData = parseJsonFromModel(resultText, unknownFallback);
-      parsedData.liveDataUsed = live.hasLive;
-      parsedData.liveSource = live.source;
-      parsedData.viralityScore = Number(parsedData.viralityScore) || 0;
-      parsedData.engagementScore = Number(parsedData.engagementScore) || 0;
-      parsedData.confidenceScore = Number(parsedData.confidenceScore) || 0;
-      if (!Array.isArray(parsedData.recommendedTweaks)) parsedData.recommendedTweaks = unknownFallback.recommendedTweaks;
+      const parsedData = constrainPrediction(parseJsonFromModel(resultText, unknownFallback), live);
       res.json({ success: true, prediction: parsedData, liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
@@ -4251,8 +4430,8 @@ Never invent 35,000-style reach. Return ONLY JSON.`);
       }
       const live = await liveFor(req);
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Content Optimization Agent.
-Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure, a cluster of 15 targeted SEO Hashtags, and 3 CTA Strategies.
-Tailor copy to the connected platforms and last-sync performance. If a selected post's metrics are provided, reference them. Respond in clean structured Markdown.`);
+Generate 3 hooks, 2 captions, 15 hashtags, and 3 CTAs for the connected platforms.
+Each hook/caption must say which last-sync post or metric it is copying (saves, reach, caption pattern). If there are no recent posts, write process advice and do not fake winning examples. Markdown.`);
       const prompt = withLiveAccountUser(
         `Topic: "${topic}", Target Channel: "${channel}", Main Goal: "${goal}", Audience: "${audience}".
 Hook: "${hook || ""}". Post type: "${postType || ""}".
@@ -4312,20 +4491,19 @@ Search the public web for this competitor and compare only against this brand's 
       const { calendarData, campaignGoal, clientName } = req.body;
       const live = await liveFor(req);
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Content Calendar Audit Engine.
-Analyze the provided monthly content calendar for "${clientName || "Client"}" against campaign goal: "${campaignGoal || "Drive engagement and sales"}".
-Evaluate against this brand's connected platforms and last-sync performance:
+Analyze the calendar for "${clientName || "Client"}" against goal: "${campaignGoal || "Drive engagement and sales"}".
+Ground format advice in last-sync platforms and recent provider posts. Do not invent a best posting hour.
+Evaluate:
 1. Overall Quality Score (0-100)
-2. Content Pillar Balance (Educational, Promotional, Social Proof, Viral Curiosity %)
-3. Top 3 Strengths
-4. Top 3 Critical Weaknesses & Content Gaps
-5. Posting Time & Format Optimizations grounded in last-sync accounts
-6. Specific 1-Click Suggestions to improve weak posts.
+2. Content Pillar Balance
+3. Top 3 Strengths (cite calendar rows)
+4. Top 3 Gaps vs last-sync winning posts
+5. Format suggestions (Reel vs carousel etc.) from last-sync posts
+6. Specific rewrites for weak hooks.
 
-Respond in structured Markdown.`);
-      const userPrompt = withLiveAccountUser(
-        `Content Calendar Data: ${typeof calendarData === "string" ? calendarData : JSON.stringify(calendarData, null, 2)}`,
-        live
-      );
+Markdown.`);
+      const slim = slimCalendarForAi(calendarData);
+      const userPrompt = withLiveAccountUser(`Content Calendar Data: ${JSON.stringify(slim)}`, live);
       const resultText = await generateGrowthAI(userPrompt, systemPrompt);
       res.json({ success: true, auditReport: resultText, liveContext: live.publicSummary });
     } catch (err) {
@@ -4337,16 +4515,9 @@ Respond in structured Markdown.`);
       const { campaignName, primaryGoal, targetAudience, budget } = req.body;
       const live = await liveFor(req);
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Sales Funnel & Retargeting Strategy Engine.
-Generate a complete 5-stage sales funnel and 3 high-converting audience retargeting scripts for campaign "${campaignName}".
-Use this brand's connected platforms and last-sync spend/conversion numbers. If spend is 0 or unknown, do not invent ROAS.
-Include:
-- Stage 1: Top of Funnel (Attraction Hook)
-- Stage 2: Middle of Funnel (Engagement & Reel Savers)
-- Stage 3: High Intent Trigger (DM Auto-responder Lead Magnet)
-- Stage 4: Retargeting Pool Script (Ad copy for abandoned warm leads)
-- Stage 5: Bottom of Funnel Conversion Urgency Call-to-action.
-
-Respond in structured Markdown.`);
+Build a 5-stage funnel for "${campaignName}" using connected platforms and last-sync posts/spend.
+If spend or conversions are 0, ROAS is unknown \u2014 do not invent it. Reuse winning last-sync post captions in TOFU/MOFU copy.
+Include stages 1\u20135 (hook, saver content, DM lead, retargeting, conversion CTA). Markdown.`);
       const prompt = withLiveAccountUser(
         `Campaign: "${campaignName}", Goal: "${primaryGoal}", Audience: "${targetAudience}", Monthly Ad Budget: "${budget ?? "unknown"}".`,
         live
@@ -4362,22 +4533,15 @@ Respond in structured Markdown.`);
       const { visualAssetUrl, visualAssetType, calendarTopic, hookText, captionText, campaignGoal, platform, contentType } = req.body;
       const live = await liveFor(req);
       const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Multimodal Creative Director & Visual Analyst.
-You analyze content marketing graphics and video thumbnails/frames against scheduled calendar topics, campaign goals, and this brand's last-sync performance.
-
-Analyze the visual creative for:
-1. Visual Appeal & Hook Score (0-100)
-2. Topic & Calendar Relevance Match Score (0-100%)
-3. Predicted Campaign Success Rate (0-100%) \u2014 if hasLive is false, set this to 0 and explain
-4. Visual Hook Audit (Thumb-stop power, typography legibility, contrast, brand logo placement)
-5. Actionable Design Tweaks for Video Editors/Designers before posting.
-
-Return ONLY valid JSON matching this schema:
+Score the image for hook power and match to the calendar topic. Compare on-image text to last-sync winning posts when present.
+predictedSuccessRate must be 0 if hasLive is false. Do not invent posting times.
+Return ONLY JSON:
 {
   "visualScore": 0,
   "campaignGoalMatchPct": 0,
   "predictedSuccessRate": 0,
-  "visualHookAudit": "Cite live account context if available.",
-  "relevanceAnalysis": "Explanation of how well this graphic/video relates to the calendar topic and hook.",
+  "visualHookAudit": "What the image actually shows vs last-sync posts.",
+  "relevanceAnalysis": "Calendar topic / hook match.",
   "designTweaks": ["...", "...", "..."]
 }`);
       const promptText = withLiveAccountUser(`
