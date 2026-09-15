@@ -176,7 +176,13 @@ export function registerSocialRoutes(app: Express) {
         return;
       }
       await assertClientInOrg(clientId, auth.orgId);
-      const state = `${platform}_${crypto.randomUUID()}`;
+      const preferredAccount = String(req.query.preferredAccount || req.query.handle || '')
+        .trim()
+        .replace(/^@/, '')
+        .slice(0, 80);
+      const state = `${platform}_${crypto.randomUUID()}${
+        preferredAccount ? `__acc_${encodeURIComponent(preferredAccount)}` : ''
+      }`;
       const redirectUri = resolveOAuthRedirectUri(
         String(req.query.redirectUri || ''),
         req.get('origin'),
@@ -195,7 +201,16 @@ export function registerSocialRoutes(app: Express) {
       });
       const overrides = await overridesForOrg(auth.orgId);
       const url = buildAuthorizeUrl(platform, state, overrides, redirectUri);
-      console.info('[oauth] authorize url ready', { platform, orgId: auth.orgId, clientId, redirectUri });
+      const metaId = overrides.meta?.clientId || '';
+      console.info('[oauth] authorize url ready', {
+        platform,
+        orgId: auth.orgId,
+        clientId,
+        redirectUri,
+        preferredAccount: preferredAccount || null,
+        metaAppIdLen: metaId.length,
+        metaAppIdNumeric: /^\d+$/.test(metaId),
+      });
       res.json({ success: true, platform, url, externalUrl: url, mock: false });
     } catch (err: any) {
       console.warn('[oauth] authorize url failed', err?.message);
@@ -438,7 +453,11 @@ export function registerSocialRoutes(app: Express) {
       const tokens = await exchangeCodeForToken(row.platform, code, overrides, redirectUri);
       const extras = { ...(await getOrgFamilyCreds(row.org_id, familyForPlatform(row.platform))).extra };
       const { data: client } = await admin.from('clients').select('name').eq('id', row.client_id).maybeSingle();
-      if (client?.name) extras.clientName = client.name;
+      const preferredMatch = String(row.state || '').match(/__acc_(.+)$/);
+      const preferredAccount = preferredMatch ? decodeURIComponent(preferredMatch[1]) : '';
+      if (/^\d{5,}$/.test(preferredAccount)) extras.externalId = preferredAccount;
+      else if (preferredAccount) extras.clientName = preferredAccount;
+      else if (client?.name) extras.clientName = client.name;
       let stats;
       let lastError: string | null = null;
       let needsSelection: any[] | undefined;

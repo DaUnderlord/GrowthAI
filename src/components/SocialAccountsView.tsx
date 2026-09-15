@@ -96,6 +96,16 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   const [isOauthLoggingIn, setIsOauthLoggingIn] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [pendingAssets, setPendingAssets] = useState<Array<{ id: string; name: string; kind: string; pageName?: string; followers?: number }>>([]);
+  const [metaAppReady, setMetaAppReady] = useState(false);
+
+  const selectedFamily: ProviderFamily =
+    selectedChannel === 'tiktok'
+      ? 'tiktok'
+      : selectedChannel === 'linkedin'
+        ? 'linkedin'
+        : selectedChannel === 'youtube' || selectedChannel === 'google_analytics' || selectedChannel === 'google_ads'
+          ? 'google'
+          : 'meta';
 
   // Listen for OAuth Success postMessage from Popup window
   useEffect(() => {
@@ -193,7 +203,13 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     setOauthError(null);
     try {
       const redirectUri = oauthRedirectUri();
-      const res = await authFetch(`/api/auth/${selectedChannel}/url?clientId=${encodeURIComponent(client.id)}&redirectUri=${encodeURIComponent(redirectUri)}`);
+      const handle = accountHandle.trim().replace(/^@/, '');
+      const qs = new URLSearchParams({
+        clientId: client.id,
+        redirectUri,
+      });
+      if (handle) qs.set('preferredAccount', handle);
+      const res = await authFetch(`/api/auth/${selectedChannel}/url?${qs.toString()}`);
       const data = await readJsonOrThrow<{ success?: boolean; error?: string; url?: string }>(res);
       if (data.url) {
         const popupWidth = 600;
@@ -269,9 +285,10 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
       setIsOauthLoggingIn(true);
       try {
         const redirectUri = oauthRedirectUri();
-        const res = await authFetch(
-          `/api/auth/${platform}/url?clientId=${encodeURIComponent(client.id)}&redirectUri=${encodeURIComponent(redirectUri)}`
-        );
+        const handle = accountHandle.trim().replace(/^@/, '');
+        const qs = new URLSearchParams({ clientId: client.id, redirectUri });
+        if (handle) qs.set('preferredAccount', handle);
+        const res = await authFetch(`/api/auth/${platform}/url?${qs.toString()}`);
         const data = await readJsonOrThrow<{ success?: boolean; error?: string; url?: string }>(res);
         if (!data.url) throw new Error(data.error || 'Could not start reconnect.');
         const authWindow = window.open(
@@ -508,7 +525,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
       {/* Connect Account Modal */}
       {showConnectModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Link2 className="w-5 h-5 text-cyan-400" />
@@ -531,7 +548,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                   oauthAuthTab === 'popup' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                OAuth Popup Login
+                Sign in
               </button>
               <button
                 type="button"
@@ -583,17 +600,6 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Select Network / Channel</label>
-                {(() => {
-                  const family: ProviderFamily =
-                    selectedChannel === 'tiktok'
-                      ? 'tiktok'
-                      : selectedChannel === 'linkedin'
-                        ? 'linkedin'
-                        : selectedChannel === 'youtube' || selectedChannel === 'google_analytics' || selectedChannel === 'google_ads'
-                          ? 'google'
-                          : 'meta';
-                  return <ProviderOnboarding family={family} client={client} compact />;
-                })()}
                 <select
                   value={selectedChannel}
                   onChange={(e) => setSelectedChannel(e.target.value as PlatformType)}
@@ -610,35 +616,39 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                 </select>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Account Handle or Page ID</label>
-                <input
-                  type="text"
-                  value={accountHandle}
-                  onChange={(e) => setAccountHandle(e.target.value)}
-                  placeholder="e.g. @auraskin_official"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-
-              {/* Tab 1: Live OAuth Authorization */}
               {oauthAuthTab === 'popup' && (
                 <div className="space-y-3 pt-1">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">
+                      Brand handle or Page ID (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={accountHandle}
+                      onChange={(e) => setAccountHandle(e.target.value)}
+                      placeholder="e.g. @auraskin_official"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      This is not the Meta App ID. After Facebook login, we use it to pick this brand if the user manages several accounts.
+                    </p>
+                  </div>
+
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
                     <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-400" />
                       Sign in with this network
                     </span>
                     <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Save the {selectedChannel.replace('_', ' ')} connection above if you have not, then sign in to this brand’s account.
+                      Facebook needs a numeric Meta App ID saved below. Then sign in with the brand’s Instagram/Facebook user.
                     </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={handleTriggerOauthPopup}
-                    disabled={isOauthLoggingIn}
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all text-xs"
+                    disabled={isOauthLoggingIn || (selectedFamily === 'meta' && !metaAppReady)}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all text-xs"
                   >
                     {isOauthLoggingIn ? (
                       <>
@@ -652,6 +662,20 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                       </>
                     )}
                   </button>
+                  {selectedFamily === 'meta' && !metaAppReady && (
+                    <p className="text-[11px] text-amber-200">
+                      Save a numeric Meta App ID below before Facebook login will work.
+                    </p>
+                  )}
+
+                  <ProviderOnboarding
+                    family={selectedFamily}
+                    client={client}
+                    compact
+                    onStatus={(status) =>
+                      setMetaAppReady(selectedFamily === 'meta' ? status.appIdValid : true)
+                    }
+                  />
                 </div>
               )}
 
@@ -684,12 +708,38 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
 
               {/* Tab 3: OAuth Setup Guide */}
               {oauthAuthTab === 'guide' && (
-                <div className="space-y-2 p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-300">
-                  <span className="font-bold text-white block text-xs">Redirect URL</span>
-                  <p>Add this URL in Meta, Google, TikTok, or LinkedIn so sign-in can return here.</p>
-                  <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 font-mono text-cyan-300 text-[10px] break-all select-all">
-                    {oauthRedirectUri()}
-                  </div>
+                <div className="space-y-3 p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-300">
+                  <span className="font-bold text-white block text-xs">How to get Meta credentials</span>
+                  <ol className="list-decimal space-y-2 pl-4 text-slate-400">
+                    <li>
+                      Open{' '}
+                      <a
+                        className="text-cyan-300 underline"
+                        href="https://developers.facebook.com/apps"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        developers.facebook.com/apps
+                      </a>{' '}
+                      and create or select your app.
+                    </li>
+                    <li>Add Facebook Login plus Instagram / Pages / Ads products you need.</li>
+                    <li>
+                      Go to <span className="text-slate-200">Settings → Basic</span>. Copy the{' '}
+                      <span className="text-slate-200">App ID</span> (digits only) and{' '}
+                      <span className="text-slate-200">App Secret</span>. An Instagram @handle is not an App ID.
+                    </li>
+                    <li>
+                      In Facebook Login → Settings, add this as a Valid OAuth Redirect URI:
+                      <div className="mt-1 bg-slate-900 p-2 rounded-lg border border-slate-800 font-mono text-cyan-300 text-[10px] break-all select-all">
+                        {oauthRedirectUri()}
+                      </div>
+                    </li>
+                    <li>
+                      On the <span className="text-slate-200">Sign in</span> tab, paste App ID + Secret, save, then click
+                      Sign in with provider for this brand.
+                    </li>
+                  </ol>
                 </div>
               )}
             </div>

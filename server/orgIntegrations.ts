@@ -132,6 +132,7 @@ export async function getAllOrgProviderStatus(orgId?: string | null) {
         configured: creds.configured,
         source: creds.source,
         clientId: creds.clientId ? `${creds.clientId.slice(0, 4)}…` : '',
+        appIdValid: creds.family === 'meta' ? /^\d{5,20}$/.test(String(creds.clientId || '').trim()) : Boolean(creds.clientId),
         verifyToken: creds.verifyToken || '',
       },
     ])
@@ -185,6 +186,11 @@ export async function saveOrgFamilyCreds(
     row.meta_webhook_verify_token =
       input.verifyToken?.trim() || existing?.meta_webhook_verify_token || `gos_${orgId.slice(0, 8)}`;
     if (!row.meta_app_id) throw new Error('Meta App ID is required.');
+    if (!/^\d{5,20}$/.test(String(row.meta_app_id))) {
+      throw new Error(
+        'Meta App ID must be numbers only from developers.facebook.com/apps. An Instagram @handle is not an App ID.'
+      );
+    }
   } else if (family === 'google') {
     row.google_client_id = (input.clientId || existing?.google_client_id || '').trim();
     row.google_client_secret = input.clientSecret?.trim() || existing?.google_client_secret || null;

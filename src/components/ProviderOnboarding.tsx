@@ -82,10 +82,12 @@ export function ProviderOnboarding({
   family,
   client,
   compact,
+  onStatus,
 }: {
   family: ProviderFamily;
   client?: ClientProfile | null;
   compact?: boolean;
+  onStatus?: (status: { configured: boolean; appIdValid: boolean }) => void;
 }) {
   const { t } = useWorkspaceLocale();
   const guide = GUIDES[family];
@@ -102,10 +104,24 @@ export function ProviderOnboarding({
 
   const load = async () => {
     const res = await authFetch('/api/org/providers');
-    const data = await readJsonOrThrow<{ success?: boolean; families?: Record<string, { configured?: boolean; verifyToken?: string }> }>(res);
+    const data = await readJsonOrThrow<{
+      success?: boolean;
+      families?: Record<string, { configured?: boolean; verifyToken?: string; appIdValid?: boolean }>;
+    }>(res);
     if (!data.success) return;
     setRedirectUri(`${window.location.origin}/auth/callback`);
     const familyStatus = data.families?.[family];
+    const appIdValid = familyStatus?.appIdValid !== false;
+    onStatus?.({
+      configured: Boolean(familyStatus?.configured),
+      appIdValid: Boolean(familyStatus?.configured) && appIdValid,
+    });
+    if (familyStatus?.configured && family === 'meta' && familyStatus.appIdValid === false) {
+      setConfigured(false);
+      setStep(2);
+      setError('Saved Meta App ID is not the numeric ID from developers.facebook.com/apps. Paste the App ID (numbers only), not an Instagram handle.');
+      return;
+    }
     if (familyStatus?.configured) {
       setConfigured(true);
       setStep(3);
@@ -196,22 +212,43 @@ export function ProviderOnboarding({
 
       {step === 1 && (
         <div className="space-y-3 text-sm text-slate-300">
-          <ol className="list-decimal space-y-2 pl-5 text-xs text-slate-400">
-            <li>
-              {t('openProviderDashboard')}{' '}
-              <a className="text-cyan-300 underline" href={guide.docs} target="_blank" rel="noreferrer">
-                {guide.docsLabel}
-              </a>
-            </li>
-            <li>
-              {t('enableProducts')}: {guide.products.join(', ')}
-            </li>
-            <li>
-              {t('addRedirectUrl')}
-              <code className="mt-1 block break-all rounded-lg bg-slate-950 px-2 py-1 text-cyan-200">{redirectUri}</code>
-            </li>
-            <li>{t('copyClientIdSecret')}</li>
-          </ol>
+          {family === 'meta' ? (
+            <div className="space-y-2 text-xs text-slate-400">
+              <p className="font-semibold text-slate-200">{t('metaCredentialStepsTitle')}</p>
+              <ol className="list-decimal space-y-2 pl-5">
+                <li>
+                  {t('metaCredentialStep1')}{' '}
+                  <a className="text-cyan-300 underline" href={guide.docs} target="_blank" rel="noreferrer">
+                    developers.facebook.com/apps
+                  </a>
+                </li>
+                <li>{t('metaCredentialStep2')}</li>
+                <li>{t('metaCredentialStep3')}</li>
+                <li>
+                  {t('metaCredentialStep4')}
+                  <code className="mt-1 block break-all rounded-lg bg-slate-950 px-2 py-1 text-cyan-200">{redirectUri}</code>
+                </li>
+                <li>{t('metaCredentialStep5')}</li>
+              </ol>
+            </div>
+          ) : (
+            <ol className="list-decimal space-y-2 pl-5 text-xs text-slate-400">
+              <li>
+                {t('openProviderDashboard')}{' '}
+                <a className="text-cyan-300 underline" href={guide.docs} target="_blank" rel="noreferrer">
+                  {guide.docsLabel}
+                </a>
+              </li>
+              <li>
+                {t('enableProducts')}: {guide.products.join(', ')}
+              </li>
+              <li>
+                {t('addRedirectUrl')}
+                <code className="mt-1 block break-all rounded-lg bg-slate-950 px-2 py-1 text-cyan-200">{redirectUri}</code>
+              </li>
+              <li>{t('copyClientIdSecret')}</li>
+            </ol>
+          )}
           <button type="button" className="primary-button" onClick={() => setStep(2)}>
             {t('iHaveCredentials')}
           </button>
@@ -220,11 +257,17 @@ export function ProviderOnboarding({
 
       {step === 2 && (
         <div className="space-y-3">
+          {family === 'meta' && (
+            <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100">
+              App ID must be digits only from Meta Settings → Basic. Do not paste an Instagram @handle or Page name.
+            </p>
+          )}
           <label className="block text-xs text-slate-400">
             {guide.idLabel}
             <input
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
+              placeholder={family === 'meta' ? 'Numbers only, e.g. 123456789012345' : ''}
               className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
             />
           </label>
@@ -275,6 +318,9 @@ export function ProviderOnboarding({
               {t('verifyToken')}: <code className="text-cyan-200">{verifyToken}</code>
             </p>
           )}
+          <button type="button" className="text-xs text-cyan-300 underline" onClick={() => setStep(2)}>
+            Change App ID / secret
+          </button>
           <div className="flex flex-wrap gap-2">
             {guide.connect.map((item) => (
               <button key={item.platform} type="button" className="secondary-button" disabled={busy} onClick={() => void connectPlatform(item.platform)}>

@@ -471,6 +471,7 @@ async function getAllOrgProviderStatus(orgId) {
         configured: creds.configured,
         source: creds.source,
         clientId: creds.clientId ? `${creds.clientId.slice(0, 4)}\u2026` : "",
+        appIdValid: creds.family === "meta" ? /^\d{5,20}$/.test(String(creds.clientId || "").trim()) : Boolean(creds.clientId),
         verifyToken: creds.verifyToken || ""
       }
     ])
@@ -505,6 +506,11 @@ async function saveOrgFamilyCreds(orgId, family, input) {
     row.meta_app_secret = input.clientSecret?.trim() || existing?.meta_app_secret || null;
     row.meta_webhook_verify_token = input.verifyToken?.trim() || existing?.meta_webhook_verify_token || `gos_${orgId.slice(0, 8)}`;
     if (!row.meta_app_id) throw new Error("Meta App ID is required.");
+    if (!/^\d{5,20}$/.test(String(row.meta_app_id))) {
+      throw new Error(
+        "Meta App ID must be numbers only from developers.facebook.com/apps. An Instagram @handle is not an App ID."
+      );
+    }
   } else if (family === "google") {
     row.google_client_id = (input.clientId || existing?.google_client_id || "").trim();
     row.google_client_secret = input.clientSecret?.trim() || existing?.google_client_secret || null;
@@ -1204,12 +1210,20 @@ function providerConfig(platform, overrides, redirectUri = resolveOAuthRedirectU
   if (!config) throw new Error(`Unsupported platform: ${platform}`);
   return { ...config, redirectUri };
 }
+function isLikelyMetaAppId(id) {
+  return /^\d{5,20}$/.test(String(id || "").trim());
+}
 function buildAuthorizeUrl(platform, state, overrides, redirectUri) {
   const config = providerConfig(platform, overrides, redirectUri);
   if (!config.configured) {
     const family = familyOf(platform);
     throw new Error(
-      `${platform} is not connected yet. Add your ${family} app credentials in Agency Hub or Settings \u2192 Integrations, then sign in.`
+      `${platform} is not connected yet. Add your ${family} app credentials under Sign in, then try again.`
+    );
+  }
+  if ((platform === "instagram" || platform === "facebook" || platform === "meta_ads") && !isLikelyMetaAppId(config.clientId)) {
+    throw new Error(
+      "Meta App ID must be the numeric ID from developers.facebook.com/apps \u2014 not an Instagram @handle or Page name. Save that App ID under Sign in, then try again."
     );
   }
   const params = new URLSearchParams({
@@ -2269,7 +2283,8 @@ function registerSocialRoutes(app2) {
         return;
       }
       await assertClientInOrg(clientId, auth.orgId);
-      const state = `${platform}_${crypto.randomUUID()}`;
+      const preferredAccount = String(req.query.preferredAccount || req.query.handle || "").trim().replace(/^@/, "").slice(0, 80);
+      const state = `${platform}_${crypto.randomUUID()}${preferredAccount ? `__acc_${encodeURIComponent(preferredAccount)}` : ""}`;
       const redirectUri = resolveOAuthRedirectUri(
         String(req.query.redirectUri || ""),
         req.get("origin"),
@@ -2288,7 +2303,16 @@ function registerSocialRoutes(app2) {
       });
       const overrides = await overridesForOrg(auth.orgId);
       const url = buildAuthorizeUrl(platform, state, overrides, redirectUri);
-      console.info("[oauth] authorize url ready", { platform, orgId: auth.orgId, clientId, redirectUri });
+      const metaId = overrides.meta?.clientId || "";
+      console.info("[oauth] authorize url ready", {
+        platform,
+        orgId: auth.orgId,
+        clientId,
+        redirectUri,
+        preferredAccount: preferredAccount || null,
+        metaAppIdLen: metaId.length,
+        metaAppIdNumeric: /^\d+$/.test(metaId)
+      });
       res.json({ success: true, platform, url, externalUrl: url, mock: false });
     } catch (err) {
       console.warn("[oauth] authorize url failed", err?.message);
@@ -2496,7 +2520,11 @@ function registerSocialRoutes(app2) {
       const tokens = await exchangeCodeForToken(row.platform, code, overrides, redirectUri);
       const extras = { ...(await getOrgFamilyCreds(row.org_id, familyForPlatform(row.platform))).extra };
       const { data: client } = await admin2.from("clients").select("name").eq("id", row.client_id).maybeSingle();
-      if (client?.name) extras.clientName = client.name;
+      const preferredMatch = String(row.state || "").match(/__acc_(.+)$/);
+      const preferredAccount = preferredMatch ? decodeURIComponent(preferredMatch[1]) : "";
+      if (/^\d{5,}$/.test(preferredAccount)) extras.externalId = preferredAccount;
+      else if (preferredAccount) extras.clientName = preferredAccount;
+      else if (client?.name) extras.clientName = client.name;
       let stats;
       let lastError = null;
       let needsSelection;

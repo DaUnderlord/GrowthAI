@@ -77,6 +77,17 @@ async function main() {
   const instagramOverride = providerConfig('instagram', { meta: { clientId: '123', secret: 'abc' } });
   assert('instagram with org override is configured', instagramOverride.configured === true);
   assert(
+    'non-numeric Meta App ID is rejected before Facebook login',
+    (() => {
+      try {
+        buildAuthorizeUrl('instagram', 'bad-id', { meta: { clientId: '@auraskin_official', secret: 'abc' } });
+        return false;
+      } catch (err: any) {
+        return String(err.message).includes('numeric');
+      }
+    })()
+  );
+  assert(
     'authorize URL defaults to getAppUrl callback',
     instagramOverride.redirectUri === `${getAppUrl()}/auth/callback`
   );
@@ -118,12 +129,12 @@ async function main() {
   const url = buildAuthorizeUrl(
     'instagram',
     'state-2',
-    { meta: { clientId: '123', secret: 'abc' } },
+    { meta: { clientId: '123456789012345', secret: 'abc' } },
     'https://app.growth.example/auth/callback'
   );
   assert(
     'authorize URL includes Meta client id and the same callback used for token exchange',
-    url.includes('client_id=123') && url.includes(encodeURIComponent('https://app.growth.example/auth/callback'))
+    url.includes('client_id=123456789012345') && url.includes(encodeURIComponent('https://app.growth.example/auth/callback'))
   );
 
   const empty = campaignMetricsFromInsights(null, 5000);
@@ -203,7 +214,7 @@ async function main() {
   const publishAuthUrl = buildAuthorizeUrl(
     'instagram',
     'state-publish',
-    { meta: { clientId: '123', secret: 'abc' } },
+    { meta: { clientId: '123456789012345', secret: 'abc' } },
     'https://app.growth.example/auth/callback'
   );
   assert('Meta reconnect re-asks for publishing scopes', publishAuthUrl.includes('auth_type=rerequest'));

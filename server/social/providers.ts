@@ -178,6 +178,10 @@ export function providerConfig(
   return { ...config, redirectUri };
 }
 
+export function isLikelyMetaAppId(id: string) {
+  return /^\d{5,20}$/.test(String(id || '').trim());
+}
+
 export function buildAuthorizeUrl(
   platform: string,
   state: string,
@@ -188,7 +192,15 @@ export function buildAuthorizeUrl(
   if (!config.configured) {
     const family = familyOf(platform);
     throw new Error(
-      `${platform} is not connected yet. Add your ${family} app credentials in Agency Hub or Settings → Integrations, then sign in.`
+      `${platform} is not connected yet. Add your ${family} app credentials under Sign in, then try again.`
+    );
+  }
+  if (
+    (platform === 'instagram' || platform === 'facebook' || platform === 'meta_ads') &&
+    !isLikelyMetaAppId(config.clientId)
+  ) {
+    throw new Error(
+      'Meta App ID must be the numeric ID from developers.facebook.com/apps — not an Instagram @handle or Page name. Save that App ID under Sign in, then try again.'
     );
   }
   const params = new URLSearchParams({
