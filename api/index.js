@@ -1,51 +1,23 @@
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// api/vercel.ts
-var vercel_exports = {};
-__export(vercel_exports, {
-  default: () => handler
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
 });
-module.exports = __toCommonJS(vercel_exports);
 
 // server/loadEnv.ts
-var import_dotenv = __toESM(require("dotenv"), 1);
-import_dotenv.default.config();
+import dotenv from "dotenv";
+dotenv.config();
 
 // server/app.ts
-var import_express3 = __toESM(require("express"), 1);
+import express3 from "express";
 
 // server/meta/webhook.ts
-var import_crypto = __toESM(require("crypto"), 1);
-var import_express = __toESM(require("express"), 1);
+import crypto2 from "crypto";
+import express from "express";
 
 // server/supabaseAdmin.ts
-var import_supabase_js = require("@supabase/supabase-js");
+import { createClient } from "@supabase/supabase-js";
 var admin = null;
 function getSupabaseAdmin() {
   if (admin) return admin;
@@ -56,7 +28,7 @@ function getSupabaseAdmin() {
       "Missing SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY for WhatsApp server operations."
     );
   }
-  admin = (0, import_supabase_js.createClient)(url, key, {
+  admin = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
   return admin;
@@ -67,7 +39,7 @@ function getSupabaseAnonForJwt(jwt) {
   if (!url || !anon) {
     throw new Error("Missing Supabase URL/anon key for JWT verification.");
   }
-  return (0, import_supabase_js.createClient)(url, anon, {
+  return createClient(url, anon, {
     global: { headers: { Authorization: `Bearer ${jwt}` } },
     auth: { persistSession: false, autoRefreshToken: false }
   });
@@ -575,9 +547,9 @@ function requireSignature() {
   return process.env.NODE_ENV === "production";
 }
 function hmacValid(secret, rawBody, provided) {
-  const expected = import_crypto.default.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const expected = crypto2.createHmac("sha256", secret).update(rawBody).digest("hex");
   try {
-    return import_crypto.default.timingSafeEqual(Buffer.from(expected), Buffer.from(provided));
+    return crypto2.timingSafeEqual(Buffer.from(expected), Buffer.from(provided));
   } catch {
     return false;
   }
@@ -614,7 +586,7 @@ function registerMetaWebhookRoutes(app2, generateGrowthAI2) {
   });
   app2.post(
     "/api/meta/webhook",
-    import_express.default.raw({ type: "application/json" }),
+    express.raw({ type: "application/json" }),
     async (req, res) => {
       try {
         const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}));
@@ -3244,7 +3216,7 @@ function registerPublishRoutes(app2) {
 }
 
 // server/commerceRoutes.ts
-var import_express2 = __toESM(require("express"), 1);
+import express2 from "express";
 
 // server/email.ts
 function isEmailConfigured() {
@@ -3344,7 +3316,7 @@ function verifyStripeSignature(rawBody, signature) {
       return [k, rest.join("=")];
     })
   );
-  const crypto3 = require("crypto");
+  const crypto3 = __require("crypto");
   const signed = `${parts.t}.${rawBody.toString("utf8")}`;
   const expected = crypto3.createHmac("sha256", secret).update(signed).digest("hex");
   try {
@@ -3914,7 +3886,7 @@ Daily budget: ${budget || 20}`,
   });
   app2.post(
     "/api/stripe/webhook",
-    import_express2.default.raw({ type: "application/json" }),
+    express2.raw({ type: "application/json" }),
     async (req, res) => {
       try {
         const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
@@ -3970,7 +3942,7 @@ async function probeGoogleAuthEnabled(supabaseUrl, anonKey) {
 
 // server/app.ts
 function createApp() {
-  const app2 = (0, import_express3.default)();
+  const app2 = express3();
   app2.use((req, _res, next) => {
     const original = String(
       req.headers["x-vercel-original-path"] || req.headers["x-invoke-path"] || req.headers["x-forwarded-uri"] || ""
@@ -3987,7 +3959,7 @@ function createApp() {
     if (req.method === "POST" && (req.path === "/api/meta/webhook" || req.path === "/api/stripe/webhook")) {
       return next();
     }
-    return import_express3.default.json({ limit: "2mb" })(req, res, next);
+    return express3.json({ limit: "2mb" })(req, res, next);
   });
   app2.get("/api/health", (_req, res) => {
     const ai = getAiStatus();
@@ -4305,7 +4277,7 @@ Asset Type: ${visualAssetType || "image"}
   return app2;
 }
 
-// api/vercel.ts
+// server/vercel-entry.ts
 console.info("[api] creating Express app");
 var app = createApp();
 console.info("[api] Express app ready");
@@ -4322,4 +4294,6 @@ function handler(req, res) {
     }
   }
 }
-module.exports = module.exports.default || module.exports;
+export {
+  handler as default
+};

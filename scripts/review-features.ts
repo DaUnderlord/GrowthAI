@@ -187,8 +187,8 @@ async function main() {
     read('vercel.json').includes('/api/calendar/:path*') && read('vercel.json').includes('/api/calendar/due')
   );
   assert(
-    'Vercel API function is a bundled CommonJS file',
-    read('vercel.json').includes('api/index.cjs') && read('package.json').includes('build:api')
+    'Vercel API function is a bundled JavaScript file',
+    read('vercel.json').includes('api/index.js') && read('package.json').includes('build:api')
   );
   assert(
     'Instagram OAuth requests content publish',
