@@ -11,7 +11,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { ClientProfile } from '../types';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 
 interface CompetitorIntelligenceProps {
   client: ClientProfile;
@@ -32,12 +32,12 @@ export const CompetitorIntelligenceView: React.FC<CompetitorIntelligenceProps> =
     setLoading(true);
     setError(null);
     try {
-      const result = await callGrowthAi<{ report: string }>('/api/growth/competitor-scan', {
+      const result = await callGrowthAi<{ report: string }>('/api/growth/competitor-scan', withBrandContext(client, {
         competitorName: competitorInput.trim(),
         industry: client.industry,
         channel: 'instagram',
         website: competitorInput.trim(),
-      });
+      }));
       if (!result.ok) {
         setError(result.error);
       } else if (result.data.report) {

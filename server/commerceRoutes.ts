@@ -14,6 +14,7 @@ import { getAppUrl } from './appUrl';
 import { campaignMetricsFromInsights } from './insightsEngine';
 import { createMetaBoost } from './social/providers';
 import { generateGrowthAI } from './ai/gemini';
+import { loadLiveAccountContext, withLiveAccountRules, withLiveAccountUser } from './ai/liveContext';
 
 export function registerCommerceRoutes(app: Express) {
   app.get('/api/invoices', requireSupabaseUser, async (req, res) => {
@@ -378,9 +379,23 @@ export function registerCommerceRoutes(app: Express) {
         res.status(400).json({ success: false, error: 'clientId and post are required.' });
         return;
       }
+      const live = await loadLiveAccountContext(auth.orgId, clientId);
+      console.info('[ai] live context', {
+        path: '/api/growth/reboost',
+        orgId: auth.orgId,
+        clientId,
+        hasLive: live.hasLive,
+        accounts: live.accounts.length,
+        source: live.source,
+      });
       const planText = await generateGrowthAI(
-        `Create a paid reboost plan for this live post:\n${JSON.stringify(post)}\nDaily budget: ${budget || 20}`,
-        'Return markdown with audience, creative variants, and budget split. Use only the provided live metrics.'
+        withLiveAccountUser(
+          `Create a paid reboost plan for this live post:\n${JSON.stringify(post)}\nDaily budget: ${budget || 20}`,
+          live
+        ),
+        withLiveAccountRules(
+          'Return markdown with audience, creative variants, and budget split. Use only the provided live post metrics and LIVE_CONNECTED_ACCOUNT_DATA. If metrics are missing, say unknown — do not invent ROAS.'
+        )
       );
 
       const admin = getSupabaseAdmin();

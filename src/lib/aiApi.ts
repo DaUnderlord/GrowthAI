@@ -9,6 +9,21 @@ export type AiApiResult<T> = {
   status?: number;
 };
 
+export type LiveContextSummary = {
+  hasLive: boolean;
+  source: string;
+  updatedAt: string | null;
+  accountCount: number;
+  platforms: string[];
+};
+
+export function withBrandContext(
+  client: { id: string },
+  body: Record<string, unknown>
+): Record<string, unknown> {
+  return { ...body, clientId: client.id };
+}
+
 export async function callGrowthAi<T = any>(
   path: string,
   body: Record<string, unknown>

@@ -11,7 +11,7 @@ import {
   Zap
 } from 'lucide-react';
 import { ClientProfile } from '../types';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 
 interface ContentOptimizerProps {
   client: ClientProfile;
@@ -32,12 +32,12 @@ export const ContentOptimizerView: React.FC<ContentOptimizerProps> = ({ client }
     setLoading(true);
     setError(null);
     try {
-      const result = await callGrowthAi<{ optimization: string }>('/api/growth/optimize-content', {
+      const result = await callGrowthAi<{ optimization: string }>('/api/growth/optimize-content', withBrandContext(client, {
         topic,
         channel,
         goal,
         audience,
-      });
+      }));
       if (!result.ok) {
         setError(result.error);
       } else if (result.data.optimization) {

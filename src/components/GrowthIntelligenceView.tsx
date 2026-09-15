@@ -6,9 +6,10 @@ import { PredictionEngineView } from './PredictionEngineView';
 import { ContentOptimizerView } from './ContentOptimizerView';
 import { CompetitorIntelligenceView } from './CompetitorIntelligenceView';
 import { AutonomousReboostView } from './AutonomousReboostView';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 import { useLiveInsights } from '../lib/liveApi';
 import { CreativeLabView } from './CreativeLabView';
+import { LiveAccountNote } from './LiveAccountNote';
 
 interface GrowthIntelligenceProps {
   client: ClientProfile;
@@ -105,7 +106,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
       const fallback = buildLocalInsights(selectedPost, client);
 
       try {
-        const result = await callGrowthAi<{ optimization: string }>('/api/growth/optimize-content', {
+        const result = await callGrowthAi<{ optimization: string }>('/api/growth/optimize-content', withBrandContext(client, {
           topic: selectedPost.title,
           channel: selectedPost.platform,
           goal: client.primaryGoal,
@@ -120,7 +121,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
             status: selectedPost.status,
             conversions: selectedPost.conversions,
           },
-        });
+        }));
         if (cancelled) return;
         if (!result.ok) {
           setInsightText(fallback);
@@ -201,6 +202,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
       <div className="surface-panel p-5 sm:p-6">
         <p className="eyebrow-label">Growth AI Suite</p>
         <h2 className="font-display mt-1 text-3xl font-medium text-white">Intelligence for {client.name}</h2>
+        <LiveAccountNote client={client} />
         {tab === 'signals' && (
           <p className="mt-2 text-xs text-slate-500">
             Signals derive from your content calendar and connected social accounts for this brand.

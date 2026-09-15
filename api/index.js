@@ -3536,6 +3536,117 @@ function sendAiError(res, err) {
   });
 }
 
+// server/ai/liveContext.ts
+var EMPTY = {
+  hasLive: false,
+  source: "none",
+  updatedAt: null,
+  accounts: [],
+  promptBlock: "LIVE_CONNECTED_ACCOUNT_DATA: none. No social account has been synced for this brand. Do not invent follower counts, reach, spend, or ROAS. Say the numbers are unknown and that the user should connect the brand and tap Sync on Social accounts.",
+  publicSummary: { hasLive: false, source: "none", updatedAt: null, accountCount: 0, platforms: [] }
+};
+var LIVE_ACCOUNT_AI_RULES = `You MUST use LIVE_CONNECTED_ACCOUNT_DATA in the user message as the only source of this brand's account facts.
+- Do not invent followers, reach, impressions, spend, clicks, conversions, or ROAS.
+- If a metric is missing, write "unknown".
+- Ground recommendations in the connected platforms and last-sync numbers.
+- If hasLive is false, say so first, then give process advice only (connect this brand on Social accounts and tap Sync).`;
+function withLiveAccountRules(systemPrompt, _ctx) {
+  return `${systemPrompt}
+
+${LIVE_ACCOUNT_AI_RULES}`;
+}
+function withLiveAccountUser(userPrompt, ctx) {
+  return `${userPrompt}
+
+${ctx.promptBlock}`;
+}
+async function loadLiveAccountContext(orgId, clientId) {
+  if (!orgId || !String(clientId || "").trim()) return EMPTY;
+  const admin2 = getSupabaseAdmin();
+  const [connRes, insightRes] = await Promise.all([
+    admin2.from("social_connections").select(
+      "platform, account_name, status, followers, reach_24h, engagement_24h, impressions_24h, clicks_24h, spend_30d, conversions_30d, revenue_30d, health_score, last_sync, last_error"
+    ).eq("org_id", orgId).eq("client_id", clientId),
+    admin2.from("client_live_insights").select("*").eq("org_id", orgId).eq("client_id", clientId).maybeSingle()
+  ]);
+  if (connRes.error) console.warn("[ai] live context connections failed", connRes.error.message);
+  if (insightRes.error) console.warn("[ai] live context insights failed", insightRes.error.message);
+  const connections = connRes.data;
+  const insights = insightRes.data;
+  const accounts = (connections || []).map((row) => ({
+    platform: String(row.platform || ""),
+    accountName: String(row.account_name || ""),
+    status: String(row.status || ""),
+    followers: Number(row.followers || 0),
+    reach24h: Number(row.reach_24h || 0),
+    engagement24h: Number(row.engagement_24h || 0),
+    impressions24h: Number(row.impressions_24h || 0),
+    clicks24h: Number(row.clicks_24h || 0),
+    spend30d: Number(row.spend_30d || 0),
+    conversions30d: Number(row.conversions_30d || 0),
+    revenue30d: Number(row.revenue_30d || 0),
+    healthScore: Number(row.health_score || 0),
+    lastSync: row.last_sync || null,
+    lastError: row.last_error || null
+  }));
+  const liveInsights = insights?.source === "live_sync" ? insights : null;
+  const hasLive = Boolean(liveInsights) || accounts.some((a) => a.status === "connected" && (a.followers > 0 || a.reach24h > 0 || a.lastSync));
+  const posts = Array.isArray(liveInsights?.posts) ? liveInsights.posts.slice(0, 8).map((post) => ({
+    id: post.id,
+    title: post.title,
+    platform: post.platform,
+    reach: post.reach,
+    impressions: post.impressions,
+    saves: post.saves,
+    shares: post.shares,
+    likes: post.likes,
+    clicks: post.clicks,
+    conversions: post.conversions,
+    viralityScore: post.viralityScore,
+    status: post.status,
+    hookText: post.hookText
+  })) : [];
+  const personas = Array.isArray(liveInsights?.personas) ? liveInsights.personas.slice(0, 3).map((p) => ({
+    name: p.name,
+    percentage: p.percentage,
+    ageRange: p.ageRange,
+    source: p.source
+  })) : [];
+  const payload = {
+    hasLive,
+    source: liveInsights?.source || (accounts.length ? "connections_only" : "none"),
+    updatedAt: liveInsights?.updated_at || accounts.find((a) => a.lastSync)?.lastSync || null,
+    accounts,
+    scores: liveInsights ? {
+      growth_score: liveInsights.growth_score,
+      virality_score: liveInsights.virality_score,
+      engagement_health: liveInsights.engagement_health,
+      conversion_score: liveInsights.conversion_score,
+      roi_multiplier: liveInsights.roi_multiplier
+    } : null,
+    totals: liveInsights?.demographics || null,
+    trends: Array.isArray(liveInsights?.trends) ? liveInsights.trends.slice(-3) : [],
+    posts,
+    personas
+  };
+  const promptBlock = `LIVE_CONNECTED_ACCOUNT_DATA (JSON, last provider sync \u2014 not invented):
+${JSON.stringify(payload).slice(0, 12e3)}`;
+  return {
+    hasLive,
+    source: payload.source,
+    updatedAt: payload.updatedAt,
+    accounts,
+    promptBlock,
+    publicSummary: {
+      hasLive,
+      source: payload.source,
+      updatedAt: payload.updatedAt,
+      accountCount: accounts.length,
+      platforms: [...new Set(accounts.map((a) => a.platform).filter(Boolean))]
+    }
+  };
+}
+
 // server/commerceRoutes.ts
 function registerCommerceRoutes(app2) {
   app2.get("/api/invoices", requireSupabaseUser, async (req, res) => {
@@ -3836,11 +3947,25 @@ function registerCommerceRoutes(app2) {
         res.status(400).json({ success: false, error: "clientId and post are required." });
         return;
       }
+      const live = await loadLiveAccountContext(auth.orgId, clientId);
+      console.info("[ai] live context", {
+        path: "/api/growth/reboost",
+        orgId: auth.orgId,
+        clientId,
+        hasLive: live.hasLive,
+        accounts: live.accounts.length,
+        source: live.source
+      });
       const planText = await generateGrowthAI(
-        `Create a paid reboost plan for this live post:
+        withLiveAccountUser(
+          `Create a paid reboost plan for this live post:
 ${JSON.stringify(post)}
 Daily budget: ${budget || 20}`,
-        "Return markdown with audience, creative variants, and budget split. Use only the provided live metrics."
+          live
+        ),
+        withLiveAccountRules(
+          "Return markdown with audience, creative variants, and budget split. Use only the provided live post metrics and LIVE_CONNECTED_ACCOUNT_DATA. If metrics are missing, say unknown \u2014 do not invent ROAS."
+        )
       );
       const admin2 = getSupabaseAdmin();
       let providerCampaignId = null;
@@ -4026,10 +4151,26 @@ function createApp() {
   registerPublishRoutes(app2);
   registerCommerceRoutes(app2);
   const growthAi = [requireSupabaseUser];
+  async function liveFor(req) {
+    const auth = authOf(req);
+    const clientId = String(req.body?.clientId || req.body?.client_id || "");
+    const ctx = await loadLiveAccountContext(auth.orgId, clientId);
+    console.info("[ai] live context", {
+      path: req.path,
+      orgId: auth.orgId,
+      clientId: clientId || null,
+      hasLive: ctx.hasLive,
+      accounts: ctx.accounts.length,
+      source: ctx.source,
+      updatedAt: ctx.updatedAt
+    });
+    return ctx;
+  }
   app2.post("/api/growth/multi-agent", ...growthAi, async (req, res) => {
     try {
       const { clientName, industry, targetGoal, inputPrompt } = req.body;
-      const systemPrompt = `You are GrowthOS AI, an autonomous multi-agent growth council consisting of:
+      const live = await liveFor(req);
+      const systemPrompt = withLiveAccountRules(`You are GrowthOS AI, an autonomous multi-agent growth council consisting of:
 1. Data Analyst Agent
 2. Social Growth Agent
 3. Content Strategist Agent
@@ -4040,10 +4181,13 @@ function createApp() {
 
 Context: Client Name: "${clientName || "General Client"}", Industry: "${industry || "E-commerce"}", Target Goal: "${targetGoal || "3x Followers & Sales"}".
 
-Provide a structured collaborative breakdown where each relevant agent provides specific data-backed recommendations, actionable tactics, and predicted ROI. Respond in clean Markdown with clear agent headers.`;
-      const userPrompt = inputPrompt || `Run a complete growth audit and strategic roadmap for ${clientName || "our brand"} to achieve predictable growth in reach, engagement, and conversion revenue over the next 90 days.`;
+Each agent must cite LIVE_CONNECTED_ACCOUNT_DATA when stating this brand's numbers. Predicted ROI is a projection from last-sync metrics, not a guarantee. Respond in clean Markdown with clear agent headers.`);
+      const userPrompt = withLiveAccountUser(
+        inputPrompt || `Run a complete growth audit and strategic roadmap for ${clientName || "our brand"} to achieve predictable growth in reach, engagement, and conversion revenue over the next 90 days.`,
+        live
+      );
       const resultText = await generateGrowthAI(userPrompt, systemPrompt);
-      res.json({ success: true, analysis: resultText });
+      res.json({ success: true, analysis: resultText, liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
     }
@@ -4055,53 +4199,69 @@ Provide a structured collaborative breakdown where each relevant agent provides 
         res.status(400).json({ success: false, error: "hookText is required", code: "validation" });
         return;
       }
-      const systemPrompt = `You are the AI Prediction Engine of GrowthOS AI.
-Analyze the provided content idea and output a JSON response matching this structure:
+      const live = await liveFor(req);
+      const reach24h = live.accounts.reduce((sum, a) => sum + a.reach24h, 0);
+      const systemPrompt = withLiveAccountRules(`You are the AI Prediction Engine of GrowthOS AI.
+Analyze the provided content idea against LIVE_CONNECTED_ACCOUNT_DATA and output JSON:
 {
-  "estimatedReach": "35,000 - 55,000",
-  "viralityScore": 78,
-  "engagementScore": 84,
-  "conversionProbability": "12.4%",
-  "optimalPostingTime": "Thursday at 7:30 PM",
-  "confidenceScore": 89,
-  "reasoning": "Detailed breakdown of why this post will perform well or underperform based on platform algorithm hooks and user behavior patterns.",
-  "recommendedTweaks": [
-    "Tweak 1 for higher hook retention",
-    "Tweak 2 for viral share triggers",
-    "Tweak 3 for CTA conversion"
-  ]
+  "estimatedReach": "string \u2014 a range derived from last-sync 24h reach / followers, or \\"unknown\\"",
+  "viralityScore": 0,
+  "engagementScore": 0,
+  "conversionProbability": "string percent or \\"unknown\\"",
+  "optimalPostingTime": "string or \\"unknown\\"",
+  "confidenceScore": 0,
+  "reasoning": "Cite the live metrics you used. If hasLive is false, say connect + Sync first.",
+  "recommendedTweaks": ["...", "...", "..."]
 }
-Return ONLY valid raw JSON without markdown codeblock formatting if possible or formatted JSON string.`;
-      const prompt = `Platform: ${platform || "Instagram"}, Content Type: ${contentType || "Reel"}, Hook: "${hookText}", Target Audience: "${targetAudience || "Gen Z & Millennials"}", Industry: "${industry || "FMCG"}". Predict expected reach, virality score, best time, and key recommendations.`;
+If hasLive is false: estimatedReach "unknown", all scores 0, conversionProbability "unknown", confidenceScore 0.
+Never invent 35,000-style reach. Return ONLY JSON.`);
+      const prompt = withLiveAccountUser(
+        `Platform: ${platform || "Instagram"}, Content Type: ${contentType || "Reel"}, Hook: "${hookText}", Target Audience: "${targetAudience || "Core buyers"}", Industry: "${industry || "General"}". Predict expected reach, virality score, best time, and key recommendations from last-sync data only.`,
+        live
+      );
       const resultText = await generateGrowthAI(prompt, systemPrompt, { temperature: 0.4 });
-      const parsedData = parseJsonFromModel(resultText, {
-        rawOutput: resultText,
-        viralityScore: 75,
-        engagementScore: 80,
-        estimatedReach: "25,000 - 45,000",
-        optimalPostingTime: "Wednesday at 8:00 PM",
-        confidenceScore: 85,
+      const unknownFallback = {
+        estimatedReach: live.hasLive ? `unknown \u2014 model did not return JSON (last-sync 24h reach ${reach24h || "n/a"})` : "unknown \u2014 connect this brand and tap Sync on Social accounts",
+        viralityScore: 0,
+        engagementScore: 0,
+        conversionProbability: "unknown",
+        optimalPostingTime: "unknown",
+        confidenceScore: 0,
         reasoning: resultText,
-        recommendedTweaks: ["Enhance visual contrast in first 2 seconds", "Add a strong curiosity loop in the caption"],
-        conversionProbability: "8%"
-      });
-      res.json({ success: true, prediction: parsedData });
+        recommendedTweaks: live.hasLive ? ["Re-run after a successful Sync if metrics look stale"] : ["Connect the brand on Social accounts and tap Sync before predicting reach"]
+      };
+      const parsedData = parseJsonFromModel(resultText, unknownFallback);
+      parsedData.liveDataUsed = live.hasLive;
+      parsedData.liveSource = live.source;
+      parsedData.viralityScore = Number(parsedData.viralityScore) || 0;
+      parsedData.engagementScore = Number(parsedData.engagementScore) || 0;
+      parsedData.confidenceScore = Number(parsedData.confidenceScore) || 0;
+      if (!Array.isArray(parsedData.recommendedTweaks)) parsedData.recommendedTweaks = unknownFallback.recommendedTweaks;
+      res.json({ success: true, prediction: parsedData, liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
     }
   });
   app2.post("/api/growth/optimize-content", ...growthAi, async (req, res) => {
     try {
-      const { topic, channel, goal, audience } = req.body || {};
+      const { topic, channel, goal, audience, hook, postType, metrics } = req.body || {};
       if (!String(topic || "").trim()) {
         res.status(400).json({ success: false, error: "topic is required", code: "validation" });
         return;
       }
-      const systemPrompt = `You are GrowthOS AI Content Optimization Agent. 
-Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure, a cluster of 15 targeted SEO Hashtags, and 3 CTA Strategies. Respond in clean structured Markdown.`;
-      const prompt = `Topic: "${topic}", Target Channel: "${channel}", Main Goal: "${goal}", Audience: "${audience}". Optimize this content for maximum engagement and viral reach.`;
+      const live = await liveFor(req);
+      const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Content Optimization Agent.
+Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure, a cluster of 15 targeted SEO Hashtags, and 3 CTA Strategies.
+Tailor copy to the connected platforms and last-sync performance. If a selected post's metrics are provided, reference them. Respond in clean structured Markdown.`);
+      const prompt = withLiveAccountUser(
+        `Topic: "${topic}", Target Channel: "${channel}", Main Goal: "${goal}", Audience: "${audience}".
+Hook: "${hook || ""}". Post type: "${postType || ""}".
+Selected post metrics (from last sync, may be empty): ${JSON.stringify(metrics || {})}
+Optimize this content for the connected account \u2014 do not invent reach or follower counts.`,
+        live
+      );
       const resultText = await generateGrowthAI(prompt, systemPrompt);
-      res.json({ success: true, optimization: resultText });
+      res.json({ success: true, optimization: resultText, liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
     }
@@ -4113,6 +4273,7 @@ Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure
         res.status(400).json({ success: false, error: "competitorName is required", code: "validation" });
         return;
       }
+      const live = await liveFor(req);
       const target = String(website || competitorName).trim();
       let fetched = "";
       const urlGuess = target.startsWith("http") ? target : `https://${target.replace(/^@/, "")}`;
@@ -4128,16 +4289,20 @@ Generate 3 high-converting Viral Hooks, 2 Captions with high retention structure
       } catch {
         fetched = "";
       }
-      const systemPrompt = `You are GrowthOS AI Competitor Intelligence Engine.
-Use live web search plus any fetched page text. Cite public sources. Do not invent follower counts. If a number is unknown, say unknown.
-Identify positioning, content themes, engagement triggers, and 3 counter-strategies. Markdown.`;
-      const prompt = `Competitor: "${competitorName}", Industry: "${industry}", Channel: "${channel}", Website/handle: "${target}".
+      const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Competitor Intelligence Engine.
+Use live web search plus any fetched page text for the COMPETITOR only. Cite public sources. Do not invent follower counts for the competitor or for this brand.
+This brand's numbers come only from LIVE_CONNECTED_ACCOUNT_DATA.
+Identify positioning gaps vs this brand's connected accounts, content themes, engagement triggers, and 3 counter-strategies. Markdown.`);
+      const prompt = withLiveAccountUser(
+        `Competitor: "${competitorName}", Industry: "${industry}", Channel: "${channel}", Website/handle: "${target}".
 Fetched public page text (may be empty): ${fetched || "[none]"}
-Search the public web for this brand's social presence and summarize only what you can verify.`;
+Search the public web for this competitor and compare only against this brand's last-sync metrics.`,
+        live
+      );
       const resultText = await generateGrowthAI(prompt, systemPrompt, {
         tools: [{ googleSearch: {} }]
       });
-      res.json({ success: true, report: resultText, fetchedPage: Boolean(fetched) });
+      res.json({ success: true, report: resultText, fetchedPage: Boolean(fetched), liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
     }
@@ -4145,20 +4310,24 @@ Search the public web for this brand's social presence and summarize only what y
   app2.post("/api/growth/analyze-calendar", ...growthAi, async (req, res) => {
     try {
       const { calendarData, campaignGoal, clientName } = req.body;
-      const systemPrompt = `You are GrowthOS AI Content Calendar Audit Engine.
+      const live = await liveFor(req);
+      const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Content Calendar Audit Engine.
 Analyze the provided monthly content calendar for "${clientName || "Client"}" against campaign goal: "${campaignGoal || "Drive engagement and sales"}".
-Evaluate:
+Evaluate against this brand's connected platforms and last-sync performance:
 1. Overall Quality Score (0-100)
 2. Content Pillar Balance (Educational, Promotional, Social Proof, Viral Curiosity %)
 3. Top 3 Strengths
 4. Top 3 Critical Weaknesses & Content Gaps
-5. Posting Time & Format Optimizations
+5. Posting Time & Format Optimizations grounded in last-sync accounts
 6. Specific 1-Click Suggestions to improve weak posts.
 
-Respond in structured Markdown.`;
-      const userPrompt = `Content Calendar Data: ${typeof calendarData === "string" ? calendarData : JSON.stringify(calendarData, null, 2)}`;
+Respond in structured Markdown.`);
+      const userPrompt = withLiveAccountUser(
+        `Content Calendar Data: ${typeof calendarData === "string" ? calendarData : JSON.stringify(calendarData, null, 2)}`,
+        live
+      );
       const resultText = await generateGrowthAI(userPrompt, systemPrompt);
-      res.json({ success: true, auditReport: resultText });
+      res.json({ success: true, auditReport: resultText, liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
     }
@@ -4166,8 +4335,10 @@ Respond in structured Markdown.`;
   app2.post("/api/growth/generate-campaign-funnel", ...growthAi, async (req, res) => {
     try {
       const { campaignName, primaryGoal, targetAudience, budget } = req.body;
-      const systemPrompt = `You are GrowthOS AI Sales Funnel & Retargeting Strategy Engine.
+      const live = await liveFor(req);
+      const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Sales Funnel & Retargeting Strategy Engine.
 Generate a complete 5-stage sales funnel and 3 high-converting audience retargeting scripts for campaign "${campaignName}".
+Use this brand's connected platforms and last-sync spend/conversion numbers. If spend is 0 or unknown, do not invent ROAS.
 Include:
 - Stage 1: Top of Funnel (Attraction Hook)
 - Stage 2: Middle of Funnel (Engagement & Reel Savers)
@@ -4175,10 +4346,13 @@ Include:
 - Stage 4: Retargeting Pool Script (Ad copy for abandoned warm leads)
 - Stage 5: Bottom of Funnel Conversion Urgency Call-to-action.
 
-Respond in structured Markdown.`;
-      const prompt = `Campaign: "${campaignName}", Goal: "${primaryGoal}", Audience: "${targetAudience}", Monthly Ad Budget: "$${budget || 5e3}".`;
+Respond in structured Markdown.`);
+      const prompt = withLiveAccountUser(
+        `Campaign: "${campaignName}", Goal: "${primaryGoal}", Audience: "${targetAudience}", Monthly Ad Budget: "${budget ?? "unknown"}".`,
+        live
+      );
       const resultText = await generateGrowthAI(prompt, systemPrompt);
-      res.json({ success: true, funnelStrategy: resultText });
+      res.json({ success: true, funnelStrategy: resultText, liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
     }
@@ -4186,38 +4360,35 @@ Respond in structured Markdown.`;
   app2.post("/api/growth/analyze-creative-multimodal", ...growthAi, async (req, res) => {
     try {
       const { visualAssetUrl, visualAssetType, calendarTopic, hookText, captionText, campaignGoal, platform, contentType } = req.body;
-      const systemPrompt = `You are GrowthOS AI Multimodal Creative Director & Visual Analyst.
-You analyze content marketing graphics and video thumbnails/frames against scheduled calendar topics and campaign goals.
+      const live = await liveFor(req);
+      const systemPrompt = withLiveAccountRules(`You are GrowthOS AI Multimodal Creative Director & Visual Analyst.
+You analyze content marketing graphics and video thumbnails/frames against scheduled calendar topics, campaign goals, and this brand's last-sync performance.
 
 Analyze the visual creative for:
 1. Visual Appeal & Hook Score (0-100)
 2. Topic & Calendar Relevance Match Score (0-100%)
-3. Predicted Campaign Success Rate (0-100%)
+3. Predicted Campaign Success Rate (0-100%) \u2014 if hasLive is false, set this to 0 and explain
 4. Visual Hook Audit (Thumb-stop power, typography legibility, contrast, brand logo placement)
 5. Actionable Design Tweaks for Video Editors/Designers before posting.
 
 Return ONLY valid JSON matching this schema:
 {
-  "visualScore": 88,
-  "campaignGoalMatchPct": 92,
-  "predictedSuccessRate": 86,
-  "visualHookAudit": "Text explanation of visual strengths and first 3 second hook power.",
+  "visualScore": 0,
+  "campaignGoalMatchPct": 0,
+  "predictedSuccessRate": 0,
+  "visualHookAudit": "Cite live account context if available.",
   "relevanceAnalysis": "Explanation of how well this graphic/video relates to the calendar topic and hook.",
-  "designTweaks": [
-    "Increase hook headline font size by 15% for mobile feed contrast",
-    "Add sub-headline in brand gold color to highlight CTA",
-    "Ensure brand logo is centered in lower-right safe zone"
-  ]
-}`;
-      const promptText = `
+  "designTweaks": ["...", "...", "..."]
+}`);
+      const promptText = withLiveAccountUser(`
 Platform: ${platform || "Instagram"}, Content Format: ${contentType || "Reel/Graphic"}
-Scheduled Calendar Topic: "${calendarTopic || "Product Showcase"}"
-Hook Text: "${hookText || "Stop doing this standard mistake"}"
-Caption Preview: "${captionText || "Learn how our framework triples reach"}"
-Target Campaign Goal: "${campaignGoal || "Scale high-intent conversions"}"
+Scheduled Calendar Topic: "${calendarTopic || ""}"
+Hook Text: "${hookText || ""}"
+Caption Preview: "${captionText || ""}"
+Target Campaign Goal: "${campaignGoal || ""}"
 Visual Asset URL/Data: ${visualAssetUrl ? visualAssetUrl.substring(0, 100) + "..." : "Provided Graphic Asset"}
 Asset Type: ${visualAssetType || "image"}
-    `;
+    `, live);
       const aiClient2 = await getAiClient();
       if (!aiClient2) {
         throw new AiServiceError(
@@ -4253,18 +4424,16 @@ Asset Type: ${visualAssetType || "image"}
         temperature: 0.4
       });
       const parsed = parseJsonFromModel(resultText, {
-        visualScore: 85,
-        campaignGoalMatchPct: 90,
-        predictedSuccessRate: 84,
-        visualHookAudit: resultText || "Strong visual layout matching intended hook.",
-        relevanceAnalysis: "Visual elements complement the scheduled calendar topic.",
-        designTweaks: [
-          "Optimize color contrast for mobile OLED screens",
-          "Ensure text safe zones clear native social platform UI overlays"
-        ]
+        visualScore: 0,
+        campaignGoalMatchPct: 0,
+        predictedSuccessRate: 0,
+        visualHookAudit: resultText || "Model did not return JSON.",
+        relevanceAnalysis: live.hasLive ? "Could not parse structured analysis; see visualHookAudit for raw model text." : "No live sync for this brand \u2014 connect and Sync before treating success rate as real.",
+        designTweaks: live.hasLive ? ["Re-run analysis after confirming the image uploaded"] : ["Connect this brand on Social accounts and tap Sync"]
       });
       parsed.analyzedAt = (/* @__PURE__ */ new Date()).toISOString();
-      res.json({ success: true, analysis: parsed });
+      parsed.liveDataUsed = live.hasLive;
+      res.json({ success: true, analysis: parsed, liveContext: live.publicSummary });
     } catch (err) {
       sendAiError(res, err);
     }

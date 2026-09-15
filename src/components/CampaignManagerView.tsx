@@ -13,7 +13,8 @@ import {
   saveCampaign,
   subscribeToCampaigns,
 } from '../lib/supabase';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { LiveAccountNote } from './LiveAccountNote';
 import { authFetch } from '../lib/authFetch';
 
 interface CampaignManagerProps {
@@ -194,12 +195,12 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
     setGeneratingFunnel(true);
     setFunnelError(null);
     try {
-      const result = await callGrowthAi<{ funnelStrategy: string }>('/api/growth/generate-campaign-funnel', {
+      const result = await callGrowthAi<{ funnelStrategy: string }>('/api/growth/generate-campaign-funnel', withBrandContext(client, {
         campaignName: selectedCampaign.name,
         primaryGoal: selectedCampaign.primaryGoal,
         targetAudience: 'High-Intent Prospects',
         budget: selectedCampaign.budget,
-      });
+      }));
       if (!result.ok) {
         setFunnelError(result.error);
       } else if (result.data.funnelStrategy) {
@@ -408,6 +409,7 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
               {generatingFunnel ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               <span>{generatingFunnel ? 'Generating' : 'Run AI strategy'}</span>
             </button>
+            <LiveAccountNote client={client} />
             {funnelError && (
               <div className="rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
                 {funnelError}

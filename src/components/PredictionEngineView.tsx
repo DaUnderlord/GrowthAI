@@ -11,7 +11,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { ClientProfile, PredictionResult } from '../types';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 
 interface PredictionEngineProps {
   client: ClientProfile;
@@ -31,13 +31,13 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
     setLoading(true);
     setError(null);
     try {
-      const result = await callGrowthAi<{ prediction: any }>('/api/growth/predict', {
+      const result = await callGrowthAi<{ prediction: any }>('/api/growth/predict', withBrandContext(client, {
           platform,
           contentType,
           hookText,
           targetAudience,
           industry: client.industry,
-      });
+      }));
       if (!result.ok) {
         setError(result.error);
       } else if (result.data.prediction) {
@@ -60,7 +60,7 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
             <h2 className="text-xl font-bold text-white">AI Virality & Performance Prediction Engine</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Simulate post virality probability, reach, best posting times, and conversion likelihood with live Gemini modeling before publishing.
+            Estimate reach and posting windows from this brand's last connected-account sync. Missing metrics stay unknown.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs bg-indigo-500/10 px-3 py-1.5 rounded-xl border border-indigo-500/20 text-indigo-300">
@@ -159,7 +159,13 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Virality Probability</span>
                   <span className="text-3xl font-extrabold text-cyan-400">{prediction.viralityScore}%</span>
-                  <span className="text-[10px] text-emerald-400 block mt-1">High Viral Potential</span>
+                  <span className="text-[10px] text-slate-400 block mt-1">
+                    {prediction.liveDataUsed
+                      ? prediction.viralityScore >= 60
+                        ? 'High vs last-sync baseline'
+                        : 'Grounded in last sync'
+                      : 'Unknown without live sync'}
+                  </span>
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
@@ -215,7 +221,7 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
                   AI Recommended Tweaks Before Publishing
                 </h4>
                 <div className="space-y-2 text-xs">
-                  {prediction.recommendedTweaks.map((tweak, i) => (
+                  {(prediction.recommendedTweaks || []).map((tweak, i) => (
                     <div key={i} className="flex items-start gap-2 text-slate-300">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                       <span>{tweak}</span>

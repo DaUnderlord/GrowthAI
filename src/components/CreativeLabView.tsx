@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ImagePlus, Loader2 } from 'lucide-react';
 import { ClientProfile } from '../types';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 
 export function CreativeLabView({ client }: { client: ClientProfile }) {
   const [topic, setTopic] = useState('');
@@ -22,14 +22,14 @@ export function CreativeLabView({ client }: { client: ClientProfile }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await callGrowthAi<{ analysis: any }>('/api/growth/analyze-creative-multimodal', {
+      const result = await callGrowthAi<{ analysis: any }>('/api/growth/analyze-creative-multimodal', withBrandContext(client, {
         visualAssetUrl: fileData,
         visualAssetType: 'image',
         calendarTopic: topic,
         hookText: hook,
         campaignGoal: client.primaryGoal,
         platform: client.platforms.find((p) => p.connected)?.id || 'instagram',
-      });
+      }));
       if (!result.ok) setError(result.error);
       else setAnalysis(result.data.analysis);
     } catch (err: any) {

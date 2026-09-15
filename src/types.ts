@@ -211,6 +211,8 @@ export interface PredictionResult {
   confidenceScore: number;
   reasoning: string;
   recommendedTweaks: string[];
+  liveDataUsed?: boolean;
+  liveSource?: string;
 }
 
 export interface BlueprintSection {

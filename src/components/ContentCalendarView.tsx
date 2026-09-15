@@ -32,7 +32,8 @@ import {
   saveCalendarItems,
   subscribeToCalendarItems,
 } from '../lib/supabase';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { LiveAccountNote } from './LiveAccountNote';
 import { parseCalendarAuditMarkdown } from '../lib/clientInsights';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 import { dayNameForDate, scheduledAtIso, todayInZone } from '../../shared/calendarPublish';
@@ -205,11 +206,11 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
     setLoading(true);
     setAiError(null);
     try {
-      const result = await callGrowthAi<{ auditReport: string }>('/api/growth/analyze-calendar', {
+      const result = await callGrowthAi<{ auditReport: string }>('/api/growth/analyze-calendar', withBrandContext(client, {
         calendarData: calendarItems,
         campaignGoal: client.primaryGoal,
         clientName: client.name,
-      });
+      }));
       if (!result.ok) {
         setAiError(result.error);
       } else if (result.data.auditReport) {
@@ -611,6 +612,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
                 <span>{loading ? 'Auditing…' : 'Run AI audit'}</span>
               </button>
             </div>
+            <LiveAccountNote client={client} />
             <div className="grid gap-3 text-xs md:grid-cols-2">
               <div className="surface-subtle p-4">
                 <p className="mb-2 text-sm text-white">Strengths</p>

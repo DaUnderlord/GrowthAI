@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { ClientProfile } from '../types';
 import { GROWTH_AGENT_ROSTER } from '../lib/clientInsights';
-import { callGrowthAi } from '../lib/aiApi';
+import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 
 interface MultiAgentLabProps {
   client: ClientProfile;
@@ -29,12 +29,12 @@ export const MultiAgentLabView: React.FC<MultiAgentLabProps> = ({ client }) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await callGrowthAi<{ analysis: string }>('/api/growth/multi-agent', {
+      const result = await callGrowthAi<{ analysis: string }>('/api/growth/multi-agent', withBrandContext(client, {
           clientName: client.name,
           industry: client.industry,
           targetGoal: client.primaryGoal,
           inputPrompt: prompt,
-      });
+      }));
       if (!result.ok) {
         setError(result.error);
       } else if (result.data.analysis) {
