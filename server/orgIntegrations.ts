@@ -42,11 +42,13 @@ export async function getOrgFamilyCreds(orgId: string | null | undefined, family
   const row = await loadOrgRow(orgId);
 
   if (family === 'meta') {
+    const envConfigId = (process.env.META_CONFIG_ID || '').trim();
     if (row?.meta_app_id && row?.meta_app_secret) {
       return {
         family,
         clientId: row.meta_app_id,
         secret: row.meta_app_secret,
+        extra: { configId: String(row.meta_config_id || envConfigId || '').trim() },
         configured: true,
         source: 'org',
         verifyToken: row.meta_webhook_verify_token || '',
@@ -59,12 +61,13 @@ export async function getOrgFamilyCreds(orgId: string | null | undefined, family
         family,
         clientId: appId,
         secret: appSecret,
+        extra: { configId: envConfigId },
         configured: true,
         source: 'env',
         verifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN || '',
       };
     }
-    return { family, clientId: '', secret: '', configured: false, source: 'none', verifyToken: '' };
+    return { family, clientId: '', secret: '', extra: { configId: envConfigId }, configured: false, source: 'none', verifyToken: '' };
   }
 
   if (family === 'google') {
@@ -133,6 +136,8 @@ export async function getAllOrgProviderStatus(orgId?: string | null) {
         source: creds.source,
         clientId: creds.clientId ? `${creds.clientId.slice(0, 4)}…` : '',
         appIdValid: creds.family === 'meta' ? /^\d{5,20}$/.test(String(creds.clientId || '').trim()) : Boolean(creds.clientId),
+        configIdSet:
+          creds.family === 'meta' ? /^\d{5,24}$/.test(String(creds.extra?.configId || '').trim()) : true,
         verifyToken: creds.verifyToken || '',
       },
     ])
@@ -152,12 +157,13 @@ export async function getOrgMetaCreds(orgId?: string | null): Promise<OrgMetaCre
 
 export async function saveOrgMetaCreds(
   orgId: string,
-  input: { appId: string; appSecret?: string; verifyToken?: string }
+  input: { appId: string; appSecret?: string; verifyToken?: string; configId?: string }
 ) {
   return saveOrgFamilyCreds(orgId, 'meta', {
     clientId: input.appId,
     clientSecret: input.appSecret,
     verifyToken: input.verifyToken,
+    configId: input.configId,
   });
 }
 
@@ -170,6 +176,7 @@ export async function saveOrgFamilyCreds(
     verifyToken?: string;
     developerToken?: string;
     customerId?: string;
+    configId?: string;
   }
 ) {
   const admin = getSupabaseAdmin();
@@ -189,6 +196,19 @@ export async function saveOrgFamilyCreds(
     if (!/^\d{5,20}$/.test(String(row.meta_app_id))) {
       throw new Error(
         'Meta App ID must be numbers only from developers.facebook.com/apps. An Instagram @handle is not an App ID.'
+      );
+    }
+    const submittedConfigId = String(input.configId || '').trim();
+    const nextConfigId = submittedConfigId || String(existing?.meta_config_id || '').trim();
+    row.meta_config_id = nextConfigId || null;
+    if (!nextConfigId) {
+      throw new Error(
+        'Facebook Login for Business Configuration ID is required. Create a configuration in the Meta app, add Instagram and Page publishing permissions there, then paste the Configuration ID.'
+      );
+    }
+    if (!/^\d{5,24}$/.test(nextConfigId)) {
+      throw new Error(
+        'Configuration ID must be digits only from Facebook Login for Business → Configurations.'
       );
     }
   } else if (family === 'google') {

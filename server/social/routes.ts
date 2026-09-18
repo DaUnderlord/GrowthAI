@@ -78,12 +78,12 @@ export function registerSocialRoutes(app: Express) {
         res.status(403).json({ success: false, error: 'Only admins can connect Meta.' });
         return;
       }
-      const { appId, appSecret, verifyToken } = req.body || {};
+      const { appId, appSecret, verifyToken, configId } = req.body || {};
       if (!appId) {
         res.status(400).json({ success: false, error: 'Meta App ID is required.' });
         return;
       }
-      const saved = await saveOrgMetaCreds(auth.orgId, { appId, appSecret, verifyToken });
+      const saved = await saveOrgMetaCreds(auth.orgId, { appId, appSecret, verifyToken, configId });
       res.json({ success: true, ...saved });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -127,6 +127,7 @@ export function registerSocialRoutes(app: Express) {
         verifyToken: req.body?.verifyToken,
         developerToken: req.body?.developerToken,
         customerId: req.body?.customerId,
+        configId: req.body?.configId,
       });
       res.json({ success: true, ...saved });
     } catch (err: any) {
@@ -202,6 +203,7 @@ export function registerSocialRoutes(app: Express) {
       const overrides = await overridesForOrg(auth.orgId);
       const url = buildAuthorizeUrl(platform, state, overrides, redirectUri);
       const metaId = overrides.meta?.clientId || '';
+      const metaConfigId = String(overrides.meta?.extra?.configId || '').trim();
       console.info('[oauth] authorize url ready', {
         platform,
         orgId: auth.orgId,
@@ -210,6 +212,9 @@ export function registerSocialRoutes(app: Express) {
         preferredAccount: preferredAccount || null,
         metaAppIdLen: metaId.length,
         metaAppIdNumeric: /^\d+$/.test(metaId),
+        metaConfigIdLen: metaConfigId.length,
+        metaLoginForBusiness: Boolean(metaConfigId),
+        authorizeHasScope: /[?&]scope=/.test(url),
       });
       res.json({ success: true, platform, url, externalUrl: url, mock: false });
     } catch (err: any) {
@@ -487,7 +492,7 @@ export function registerSocialRoutes(app: Express) {
         hasMetaPublishScopes(row.platform, tokens.scopes);
       const publishWarning =
         (row.platform === 'instagram' || row.platform === 'facebook') && !canPublish
-          ? 'Signed in, but Meta did not grant publishing. Add instagram_content_publish and pages_manage_posts on the Meta app, then reconnect and accept those permissions.'
+          ? 'Signed in, but Meta did not grant publishing. Add instagram_content_publish and pages_manage_posts to your Facebook Login for Business configuration, then reconnect and accept those permissions.'
           : undefined;
       res.send(
         callbackPage(openerOrigin, {

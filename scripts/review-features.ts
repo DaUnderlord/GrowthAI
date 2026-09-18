@@ -124,17 +124,50 @@ async function main() {
   } catch {
     threw = true;
   }
-  assert('authorize URL without Meta credentials throws', threw);
+  assert(
+    'authorize URL without Meta credentials throws',
+    threw
+  );
+
+  const classicWithoutConfig = (() => {
+    try {
+      buildAuthorizeUrl(
+        'instagram',
+        'state-2',
+        { meta: { clientId: '123456789012345', secret: 'abc' } },
+        'https://app.growth.example/auth/callback'
+      );
+      return 'built';
+    } catch (err: any) {
+      return String(err.message);
+    }
+  })();
+  assert(
+    'Meta authorize without configuration ID is rejected',
+    /Configuration ID/i.test(classicWithoutConfig)
+  );
 
   const url = buildAuthorizeUrl(
     'instagram',
     'state-2',
-    { meta: { clientId: '123456789012345', secret: 'abc' } },
+    {
+      meta: {
+        clientId: '123456789012345',
+        secret: 'abc',
+        extra: { configId: '987654321098765' },
+      },
+    },
     'https://app.growth.example/auth/callback'
   );
   assert(
-    'authorize URL includes Meta client id and the same callback used for token exchange',
-    url.includes('client_id=123456789012345') && url.includes(encodeURIComponent('https://app.growth.example/auth/callback'))
+    'authorize URL includes Meta client id, config_id, and the same callback used for token exchange',
+    url.includes('client_id=123456789012345') &&
+      url.includes('config_id=987654321098765') &&
+      url.includes(encodeURIComponent('https://app.growth.example/auth/callback'))
+  );
+  assert(
+    'Login for Business authorize URL does not send scope or auth_type=rerequest',
+    !/[?&]scope=/.test(url) && !url.includes('auth_type=rerequest') && url.includes('override_default_response_type=true')
   );
 
   const empty = campaignMetricsFromInsights(null, 5000);
@@ -214,10 +247,23 @@ async function main() {
   const publishAuthUrl = buildAuthorizeUrl(
     'instagram',
     'state-publish',
-    { meta: { clientId: '123456789012345', secret: 'abc' } },
+    {
+      meta: {
+        clientId: '123456789012345',
+        secret: 'abc',
+        extra: { configId: '987654321098765' },
+      },
+    },
     'https://app.growth.example/auth/callback'
   );
-  assert('Meta reconnect re-asks for publishing scopes', publishAuthUrl.includes('auth_type=rerequest'));
+  assert(
+    'Meta publishing login uses configuration ID instead of rerequest scope',
+    publishAuthUrl.includes('config_id=987654321098765') && !publishAuthUrl.includes('auth_type=rerequest')
+  );
+  assert(
+    'meta config id migration exists',
+    fs.existsSync(path.join(process.cwd(), 'supabase/migrations/20260918120000_meta_config_id.sql'))
+  );
   assert(
     'insights-only tokens cannot publish',
     hasMetaPublishScopes('instagram', 'instagram_basic,instagram_manage_insights') === false

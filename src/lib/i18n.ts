@@ -73,15 +73,22 @@ const EN: Record<string, string> = {
   addRedirectUrl: 'Add this redirect URL as a Valid OAuth Redirect URI',
   copyClientIdSecret:
     'Copy the numeric App ID and App Secret (Settings → Basic). An @handle is not an App ID.',
-  iHaveCredentials: 'I have the App ID and Secret',
+  iHaveCredentials: 'I have the App ID, Secret, and Configuration ID',
   saveAndContinue: 'Save and continue',
   appSavedForWorkspace: 'Saved for this workspace.',
   metaCredentialStepsTitle: 'How to get Meta credentials',
   metaCredentialStep1: 'Go to developers.facebook.com/apps and create or open your app.',
-  metaCredentialStep2: 'Add Instagram, Facebook Login, and any products you need (Pages, Ads, WhatsApp).',
+  metaCredentialStep2:
+    'Add Facebook Login for Business (not classic Facebook Login). Create a configuration and include: instagram_basic, instagram_manage_insights, instagram_content_publish, pages_show_list, pages_read_engagement, pages_read_user_content, pages_manage_posts. Add ads_read and business_management only if you connect Meta Ads.',
   metaCredentialStep3: 'Open Settings → Basic. Copy App ID (digits only) and App Secret.',
-  metaCredentialStep4: 'Under Facebook Login → Settings, paste the redirect URL below as a Valid OAuth Redirect URI.',
-  metaCredentialStep5: 'Save App ID + Secret here, then click Sign in with provider for each brand.',
+  metaCredentialStep4: 'Under Facebook Login for Business, paste the redirect URL below as a Valid OAuth Redirect URI.',
+  metaCredentialStep5:
+    'Copy the Configuration ID from Facebook Login for Business → Configurations. Save App ID, Secret, and Configuration ID here, then click Sign in with provider for each brand. This app does not send a permission list as OAuth scope — Meta uses the configuration.',
+  metaConfigId: 'Login configuration ID',
+  metaConfigIdHelp:
+    'Numeric ID from Facebook Login for Business → Configurations. This is not the App ID or App Secret. Permissions must live on that configuration.',
+  metaLoginForBusinessNote:
+    'Meta Login for Business uses your configuration ID. Do not expect this app to request pages_manage_posts or Instagram scopes in the URL — those must be on the configuration.',
   verifyToken: 'Verify token for WhatsApp webhooks',
   oauthFailed: 'Login failed',
   couldNotStartLogin: 'Could not start provider login.',

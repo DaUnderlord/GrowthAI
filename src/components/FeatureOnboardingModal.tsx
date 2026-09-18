@@ -20,7 +20,7 @@ const STEPS = [
   {
     icon: Link2,
     title: 'Connect your own apps',
-    body: 'In Agency Hub → Connect apps, save Meta, Google, TikTok, or LinkedIn for your workspace, then sign in for the brand you selected.',
+    body: 'In Agency Hub → Connect apps, save Meta (App ID, Secret, and Login for Business Configuration ID), Google, TikTok, or LinkedIn for your workspace, then sign in for the brand you selected.',
   },
   {
     icon: BarChart2,

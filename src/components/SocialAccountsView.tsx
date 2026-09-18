@@ -277,7 +277,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
     setOauthAuthTab('popup');
     setOauthError(
       platform === 'instagram' || platform === 'facebook'
-        ? 'Sign in again and accept publishing. The Meta app must include instagram_content_publish and pages_manage_posts.'
+        ? 'Sign in again and accept publishing. Those permissions must be on your Facebook Login for Business configuration (instagram_content_publish and pages_manage_posts), not sent as OAuth scope by this app.'
         : null
     );
     void (async () => {
@@ -640,7 +640,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                       Sign in with this network
                     </span>
                     <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Facebook needs a numeric Meta App ID saved below. Then sign in with the brand’s Instagram/Facebook user.
+                      Facebook Login for Business needs a numeric App ID and Configuration ID saved below. Permissions come from that configuration, not from this app. Then sign in with the brand’s Instagram/Facebook user.
                     </p>
                   </div>
 
@@ -664,7 +664,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                   </button>
                   {selectedFamily === 'meta' && !metaAppReady && (
                     <p className="text-[11px] text-amber-200">
-                      Save a numeric Meta App ID below before Facebook login will work.
+                      Save a numeric Meta App ID and Login for Business Configuration ID below before Facebook login will work.
                     </p>
                   )}
 
@@ -673,7 +673,9 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                     client={client}
                     compact
                     onStatus={(status) =>
-                      setMetaAppReady(selectedFamily === 'meta' ? status.appIdValid : true)
+                      setMetaAppReady(
+                        selectedFamily === 'meta' ? Boolean(status.appIdValid && status.configIdSet) : true
+                      )
                     }
                   />
                 </div>
@@ -723,21 +725,26 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
                       </a>{' '}
                       and create or select your app.
                     </li>
-                    <li>Add Facebook Login plus Instagram / Pages / Ads products you need.</li>
+                    <li>
+                      Add <span className="text-slate-200">Facebook Login for Business</span>. Create a configuration that
+                      includes Instagram insights/publish and Page publishing permissions. Ads permissions only if you
+                      connect Meta Ads.
+                    </li>
                     <li>
                       Go to <span className="text-slate-200">Settings → Basic</span>. Copy the{' '}
                       <span className="text-slate-200">App ID</span> (digits only) and{' '}
                       <span className="text-slate-200">App Secret</span>. An Instagram @handle is not an App ID.
                     </li>
                     <li>
-                      In Facebook Login → Settings, add this as a Valid OAuth Redirect URI:
+                      In Facebook Login for Business, add this as a Valid OAuth Redirect URI:
                       <div className="mt-1 bg-slate-900 p-2 rounded-lg border border-slate-800 font-mono text-cyan-300 text-[10px] break-all select-all">
                         {oauthRedirectUri()}
                       </div>
                     </li>
                     <li>
-                      On the <span className="text-slate-200">Sign in</span> tab, paste App ID + Secret, save, then click
-                      Sign in with provider for this brand.
+                      Copy the <span className="text-slate-200">Configuration ID</span>. On the{' '}
+                      <span className="text-slate-200">Sign in</span> tab, paste App ID, Secret, and Configuration ID,
+                      save, then click Sign in with provider for this brand.
                     </li>
                   </ol>
                 </div>

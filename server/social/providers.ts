@@ -182,6 +182,15 @@ export function isLikelyMetaAppId(id: string) {
   return /^\d{5,20}$/.test(String(id || '').trim());
 }
 
+/** Facebook Login for Business configuration IDs are numeric, like App IDs. */
+export function isLikelyMetaConfigId(id: string) {
+  return /^\d{5,24}$/.test(String(id || '').trim());
+}
+
+function metaLoginConfigId(overrides?: ProviderOverrideMap) {
+  return String(overrides?.meta?.extra?.configId || process.env.META_CONFIG_ID || '').trim();
+}
+
 export function buildAuthorizeUrl(
   platform: string,
   state: string,
@@ -207,9 +216,32 @@ export function buildAuthorizeUrl(
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: 'code',
-    scope: config.scopes,
     state,
   });
+  const isMeta = platform === 'instagram' || platform === 'facebook' || platform === 'meta_ads';
+  if (isMeta) {
+    const configId = metaLoginConfigId(overrides);
+    if (!configId) {
+      throw new Error(
+        'Facebook Login for Business needs a Configuration ID. In your Meta app open Facebook Login for Business → Configurations, create one that includes Instagram insights/publish and Page publishing, then save that ID under Sign in.'
+      );
+    }
+    if (!isLikelyMetaConfigId(configId)) {
+      throw new Error(
+        'Configuration ID must be the numeric ID from Facebook Login for Business → Configurations — not an App Secret or Instagram handle.'
+      );
+    }
+    params.set('config_id', configId);
+    params.set('override_default_response_type', 'true');
+    console.info('[oauth] meta authorize using login-for-business', {
+      platform,
+      hasScope: false,
+      hasConfigId: true,
+      configIdLen: configId.length,
+    });
+  } else {
+    params.set('scope', config.scopes);
+  }
   if (platform === 'youtube' || platform === 'google_analytics' || platform === 'google_ads') {
     params.set('access_type', 'offline');
     params.set('prompt', 'consent');
@@ -217,9 +249,6 @@ export function buildAuthorizeUrl(
   }
   if (platform === 'tiktok') {
     params.set('client_key', config.clientId);
-  }
-  if (platform === 'instagram' || platform === 'facebook' || platform === 'meta_ads') {
-    params.set('auth_type', 'rerequest');
   }
   return `${config.authorizeUrl}?${params.toString()}`;
 }

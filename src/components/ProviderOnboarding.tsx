@@ -87,13 +87,14 @@ export function ProviderOnboarding({
   family: ProviderFamily;
   client?: ClientProfile | null;
   compact?: boolean;
-  onStatus?: (status: { configured: boolean; appIdValid: boolean }) => void;
+  onStatus?: (status: { configured: boolean; appIdValid: boolean; configIdSet?: boolean }) => void;
 }) {
   const { t } = useWorkspaceLocale();
   const guide = GUIDES[family];
   const [step, setStep] = useState(1);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [configId, setConfigId] = useState('');
   const [developerToken, setDeveloperToken] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [configured, setConfigured] = useState(false);
@@ -106,20 +107,33 @@ export function ProviderOnboarding({
     const res = await authFetch('/api/org/providers');
     const data = await readJsonOrThrow<{
       success?: boolean;
-      families?: Record<string, { configured?: boolean; verifyToken?: string; appIdValid?: boolean }>;
+      families?: Record<
+        string,
+        { configured?: boolean; verifyToken?: string; appIdValid?: boolean; configIdSet?: boolean }
+      >;
     }>(res);
     if (!data.success) return;
     setRedirectUri(`${window.location.origin}/auth/callback`);
     const familyStatus = data.families?.[family];
     const appIdValid = familyStatus?.appIdValid !== false;
+    const configIdSet = family === 'meta' ? familyStatus?.configIdSet === true : true;
     onStatus?.({
       configured: Boolean(familyStatus?.configured),
       appIdValid: Boolean(familyStatus?.configured) && appIdValid,
+      configIdSet,
     });
     if (familyStatus?.configured && family === 'meta' && familyStatus.appIdValid === false) {
       setConfigured(false);
       setStep(2);
       setError('Saved Meta App ID is not the numeric ID from developers.facebook.com/apps. Paste the App ID (numbers only), not an Instagram handle.');
+      return;
+    }
+    if (familyStatus?.configured && family === 'meta' && !configIdSet) {
+      setConfigured(false);
+      setStep(2);
+      setError(
+        'Save the Facebook Login for Business Configuration ID (digits from Configurations). This app will not send a permission list as OAuth scope.'
+      );
       return;
     }
     if (familyStatus?.configured) {
@@ -158,6 +172,7 @@ export function ProviderOnboarding({
           clientSecret,
           developerToken: family === 'google' ? developerToken : undefined,
           customerId: family === 'google' ? customerId : undefined,
+          configId: family === 'meta' ? configId : undefined,
         }),
       });
       const data = await readJsonOrThrow<{ success?: boolean; error?: string }>(res);
@@ -259,7 +274,7 @@ export function ProviderOnboarding({
         <div className="space-y-3">
           {family === 'meta' && (
             <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100">
-              App ID must be digits only from Meta Settings → Basic. Do not paste an Instagram @handle or Page name.
+              {t('metaLoginForBusinessNote')}
             </p>
           )}
           <label className="block text-xs text-slate-400">
@@ -280,6 +295,18 @@ export function ProviderOnboarding({
               className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
             />
           </label>
+          {family === 'meta' && (
+            <label className="block text-xs text-slate-400">
+              {t('metaConfigId')}
+              <input
+                value={configId}
+                onChange={(e) => setConfigId(e.target.value)}
+                placeholder="Numbers only, from Configurations"
+                className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+              />
+              <span className="mt-1 block text-[11px] text-slate-500">{t('metaConfigIdHelp')}</span>
+            </label>
+          )}
           {family === 'google' && (
             <>
               <label className="block text-xs text-slate-400">
@@ -300,7 +327,17 @@ export function ProviderOnboarding({
               </label>
             </>
           )}
-          <button type="button" className="primary-button" disabled={busy || !clientId || !clientSecret} onClick={() => void save()}>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={
+              busy ||
+              !clientId ||
+              (!clientSecret && !configured) ||
+              (family === 'meta' && !configId)
+            }
+            onClick={() => void save()}
+          >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t('saveAndContinue')}
           </button>
         </div>
@@ -319,7 +356,7 @@ export function ProviderOnboarding({
             </p>
           )}
           <button type="button" className="text-xs text-cyan-300 underline" onClick={() => setStep(2)}>
-            Change App ID / secret
+            {family === 'meta' ? 'Change App ID / secret / configuration ID' : 'Change App ID / secret'}
           </button>
           <div className="flex flex-wrap gap-2">
             {guide.connect.map((item) => (
