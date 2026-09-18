@@ -42,18 +42,6 @@ export async function rebuildClientInsights(clientId: string, orgId: string) {
       : 0;
   const roiMultiplier = spend > 0 ? Number((revenue / spend).toFixed(2)) : 0;
 
-  const month = new Date().toLocaleString('en-US', { month: 'short' });
-  const trends = [
-    {
-      month,
-      reach,
-      engagement,
-      leads: conversions,
-      conversions,
-      revenue,
-    },
-  ];
-
   const posts = rows.flatMap((r) =>
     (Array.isArray((r as any).posts) ? (r as any).posts : []).map((post: any) => ({
       ...post,
@@ -86,6 +74,29 @@ export async function rebuildClientInsights(clientId: string, orgId: string) {
       hookText: String(post.hookText || post.title || post.caption || '').slice(0, 160),
       source: 'provider_media',
     }));
+
+  const postReach = snapshotPosts.reduce((sum, post) => sum + Number(post.reach || 0), 0);
+  const trendReach = reach || postReach;
+  console.info('[insights] trend reach', {
+    clientId,
+    accountReach24h: reach,
+    postReach,
+    used: trendReach,
+    engagement,
+    revenue,
+    connected: rows.map((r) => r.platform),
+  });
+  const month = new Date().toLocaleString('en-US', { month: 'short' });
+  const trends = [
+    {
+      month,
+      reach: trendReach,
+      engagement,
+      leads: conversions,
+      conversions,
+      revenue,
+    },
+  ];
 
   const totalReach = Math.max(reach, 1);
   const attribution = rows.map((r) => {
@@ -143,7 +154,7 @@ export async function rebuildClientInsights(clientId: string, orgId: string) {
     demographics: {
       followers,
       impressions,
-      reach,
+      reach: trendReach,
       engagement,
       clicks,
       spend,

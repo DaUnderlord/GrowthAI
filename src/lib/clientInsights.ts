@@ -123,22 +123,42 @@ export function buildPostSignals(
   return buildPostSignalsFromPlatforms(client);
 }
 
-export function computeOverviewInsights(client: ClientProfile) {
-  const connectedPlatforms = client.platforms.filter((p) => p.connected);
+export function computeOverviewInsights(
+  client: ClientProfile,
+  live?: {
+    hasLive?: boolean;
+    channels?: string[];
+    postCount?: number;
+    followers?: number;
+  }
+) {
+  const connectedPlatforms = (client.platforms || []).filter((p) => p.connected);
+  const liveChannels = [...new Set((live?.channels || []).filter(Boolean))];
+  const fromLive = Boolean(live?.hasLive || (live?.postCount || 0) > 0 || (live?.followers || 0) > 0);
+  const channelNames = connectedPlatforms.length
+    ? connectedPlatforms.map((p) => p.accountName || p.name || p.id)
+    : liveChannels;
+  const connectedCount = connectedPlatforms.length || liveChannels.length || (fromLive ? 1 : 0);
   const avgGrowth =
     connectedPlatforms.length > 0
       ? connectedPlatforms.reduce((sum, p) => sum + (p.growthRate || 0), 0) / connectedPlatforms.length
       : 0;
 
+  const label = channelNames.length
+    ? channelNames.map((name) => String(name).replace(/^@/, '')).join(' · ')
+    : '';
+
   return [
     {
-      title: connectedPlatforms.length
-        ? 'Connected channel momentum'
+      title: connectedCount
+        ? `${label || 'Connected accounts'} last-sync`
         : 'Connect social accounts to track momentum',
       meta: avgGrowth > 0 ? `+${avgGrowth.toFixed(1)}%` : `${client.growthScore}/100`,
-      body: connectedPlatforms.length
-        ? `${connectedPlatforms.length} live channel(s) synced for ${client.name}. Growth score is a workspace formula from last Sync (reach, engagement, conversions, health) — not a Meta forecast.`
-        : 'Link Instagram, TikTok, or other channels in Agency Hub to populate live growth signals.',
+      body: connectedCount
+        ? `${connectedCount} account${connectedCount === 1 ? '' : 's'} synced for ${client.name}${
+            live?.postCount ? ` · ${live.postCount} recent posts` : ''
+          }${live?.followers ? ` · ${live.followers.toLocaleString()} followers` : ''}. TikTok is optional. Ads stay at 0 until you pick a Meta Ads account.`
+        : 'Link Instagram, Facebook, or other channels in Agency Hub and tap Sync.',
     },
     {
       title: 'Revenue efficiency',

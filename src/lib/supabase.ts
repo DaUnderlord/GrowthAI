@@ -16,6 +16,7 @@ import { INITIAL_MOCK_CALENDAR } from '../data/mockCalendar';
 import { readJsonResponse } from './httpJson';
 import { scheduledAtIso } from '../../shared/calendarPublish';
 import { probeGoogleAuthEnabled } from '../../shared/googleAuth';
+import { connectionsToPlatforms } from './liveApi';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -1021,7 +1022,34 @@ export function subscribeToClients(onUpdate: (clients: ClientProfile[]) => void)
       onUpdate([]);
       return;
     }
-    onUpdate((data as ClientRow[] | null)?.map(mapClient) || []);
+    const { data: connections, error: connError } = await supabase
+      .from('social_connections')
+      .select(
+        'id, client_id, platform, status, account_name, followers, growth_rate, last_sync, health_score, last_error, demographics'
+      )
+      .eq('org_id', profile.org_id);
+    if (connError) console.warn('[clients] social_connections hydrate failed', connError.message);
+    const byClient = new Map<string, any[]>();
+    for (const row of connections || []) {
+      const key = String(row.client_id || '');
+      const list = byClient.get(key) || [];
+      list.push(row);
+      byClient.set(key, list);
+    }
+    const mapped = (data as ClientRow[] | null)?.map((row) => {
+      const client = mapClient(row);
+      const livePlatforms = connectionsToPlatforms(byClient.get(String(row.id)) || []);
+      if (livePlatforms.length) {
+        console.info('[clients] hydrate platforms from connections', {
+          clientId: row.id,
+          storedPlatforms: Array.isArray(row.platforms) ? row.platforms.length : 0,
+          connectionCount: livePlatforms.length,
+        });
+        return { ...client, platforms: livePlatforms };
+      }
+      return client;
+    }) || [];
+    onUpdate(mapped);
   };
 
   void load();

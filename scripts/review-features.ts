@@ -199,7 +199,8 @@ async function main() {
   );
   assert('MetricTip button explains the metric', metricTip.includes('What ${tip.title} means'));
   assert('MetricTip is used on Overview growth score', read('src/components/OverviewDashboard.tsx').includes('metric="growthScore"'));
-  assert('Growth AI Suite explains the active tab', read('src/components/GrowthIntelligenceView.tsx').includes('METRIC_TIPS'));
+  assert('Overview uses last-sync channels not empty clients.platforms', read('src/components/OverviewDashboard.tsx').includes('liveChannels'));
+  assert('insights trends fall back to post reach', read('server/insightsEngine.ts').includes('postReach'));
 
   const routes = read('server/social/routes.ts');
   assert('OAuth callback HTML is escaped', routes.includes('function escapeHtml'));

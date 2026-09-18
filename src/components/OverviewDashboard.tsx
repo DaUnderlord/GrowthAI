@@ -25,9 +25,51 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
   const hasLive = live?.source === 'live_sync';
   const score = hasLive ? live?.growth_score ?? 0 : 0;
   const trends = hasLive && live?.trends?.length ? live.trends : [];
-  const liveClient = { ...client, growthScore: score, recentGrowthTrends: trends, roiMultiplier: hasLive ? live?.roi_multiplier ?? 0 : 0, engagementHealth: hasLive ? live?.engagement_health ?? 0 : 0 };
+  const livePosts = (live?.posts || []).filter((p) => p.id && !/last 24h/i.test(String(p.title || '')));
+  const postReach = livePosts.reduce((sum, post) => sum + Number(post.reach || 0), 0);
+  const chartTrends = trends.map((row) => ({
+    ...row,
+    reach: Number(row.reach || 0) || postReach,
+  }));
+  const chartMax = Math.max(
+    0,
+    ...chartTrends.flatMap((row) => [Number(row.reach || 0), Number(row.engagement || 0), Number(row.revenue || 0)])
+  );
+  const liveClient = {
+    ...client,
+    growthScore: score,
+    recentGrowthTrends: chartTrends,
+    roiMultiplier: hasLive ? live?.roi_multiplier ?? 0 : 0,
+    engagementHealth: hasLive ? live?.engagement_health ?? 0 : 0,
+  };
+  const liveChannels = [
+    ...new Set([
+      ...(live?.attribution || []).map((row) => row.channel),
+      ...livePosts.map((post) => post.platform),
+    ]),
+  ].filter(Boolean);
 
-  const insights = computeOverviewInsights(liveClient);
+  const insights = computeOverviewInsights(liveClient, {
+    hasLive,
+    channels: liveChannels,
+    postCount: livePosts.length,
+    followers: Number(live?.demographics?.followers || 0),
+  });
+
+  if (typeof window !== 'undefined') {
+    console.info('[overview] attention vs live', {
+      clientId: client.id,
+      profilePlatforms: (client.platforms || []).length,
+      profileConnected: (client.platforms || []).filter((p) => p.connected).length,
+      hasLive,
+      liveChannels,
+      postCount: livePosts.length,
+      postReach,
+      trendReach: trends[0]?.reach ?? null,
+      trendEngagement: trends[0]?.engagement ?? null,
+      trendRevenue: trends[0]?.revenue ?? null,
+    });
+  }
 
   const primary = insights[0];
   const rest = insights.slice(1);
@@ -123,16 +165,26 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
         <section className="surface-panel p-5">
           <p className="eyebrow-label">Performance</p>
           <h2 className="font-display mt-2 text-2xl font-medium text-white">
-            <MetricLabel metric="reach24h">Reach</MetricLabel>
+            <MetricLabel metric="reach">Reach</MetricLabel>
             {' & '}
-            <MetricLabel metric="revenue">revenue</MetricLabel>
+            <MetricLabel metric="engagement">engagement</MetricLabel>
           </h2>
-          {!trends?.length && (
+          {!chartTrends.length && (
             <p className="mt-3 text-xs text-slate-500">{t('noLiveData')}</p>
+          )}
+          {chartTrends.length > 0 && chartMax === 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              Last sync has no post reach or ads revenue yet. Instagram post reach appears here after Insights sync; ads revenue after you pick a Meta Ads account.
+            </p>
+          )}
+          {chartTrends.length > 0 && chartMax > 0 && Number(chartTrends[0]?.revenue || 0) === 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              Charting last-sync post reach and engagement. Ads revenue is 0 until a Meta Ads account is selected.
+            </p>
           )}
           <div className="mt-5 h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={chartTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorReach" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#8ec8d8" stopOpacity={0.35} />
@@ -148,8 +200,11 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
                 <YAxis
                   stroke="#64748b"
                   fontSize={11}
+                  allowDecimals={false}
                   tickFormatter={(val) =>
-                    `${val >= 1000000 ? (val / 1000000).toFixed(1) + 'M' : (val / 1000).toFixed(0) + 'k'}`
+                    chartMax >= 1000
+                      ? `${val >= 1000000 ? (val / 1000000).toFixed(1) + 'M' : (val / 1000).toFixed(0) + 'k'}`
+                      : String(val)
                   }
                 />
                 <Tooltip
@@ -172,12 +227,12 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
                 />
                 <Area
                   type="monotone"
-                  dataKey="revenue"
+                  dataKey="engagement"
                   stroke="#94a3b8"
                   strokeWidth={2}
                   fillOpacity={1}
                   fill="url(#colorRev)"
-                  name="Revenue"
+                  name="Engagement"
                 />
               </AreaChart>
             </ResponsiveContainer>
