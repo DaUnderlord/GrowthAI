@@ -117,25 +117,19 @@ export const INITIAL_MOCK_CALENDAR: ContentCalendarItem[] = [
   },
 ];
 
-export const INITIAL_AUDIT_REPORT: CalendarAuditReport = {
-  overallScore: 74,
+export const EMPTY_AUDIT_REPORT: CalendarAuditReport = {
+  overallScore: 0,
   pillarBalance: {
-    educationalPct: 45,
-    promotionalPct: 35,
-    engagementPct: 10,
-    socialProofPct: 10,
+    educationalPct: 0,
+    promotionalPct: 0,
+    engagementPct: 0,
+    socialProofPct: 0,
   },
-  strengths: [
-    'Strong medical authority theme and dermatologist involvement',
-    'Good use of educational video hooks on Mondays and Fridays',
-    'Clear DM automated keyword triggers integrated into captions',
-  ],
-  gapsAndWeaknesses: [
-    '2 posts have low-performing generic hooks with low emotional tension',
-    'Posting times on Wednesday (2 PM & 12:30 PM) miss peak evening active windows (7:30 PM - 9:30 PM)',
-    'Social proof (before/after case studies) represents only 10% of calendar — recommended 25% for high sales conversion',
-  ],
-  postingTimeOptimization: 'Shift all mid-day posts to 19:30 - 20:30 to match target audience peak active hours.',
-  campaignAlignmentScore: 78,
-  suggestedCorrectionsCount: 2,
+  strengths: [],
+  gapsAndWeaknesses: ['No AI audit yet. Run an audit to score this calendar — that score is not last-sync channel health.'],
+  postingTimeOptimization: 'Peak hours stay unknown until a provider reports them.',
+  campaignAlignmentScore: 0,
+  suggestedCorrectionsCount: 0,
 };
+
+export const INITIAL_AUDIT_REPORT: CalendarAuditReport = EMPTY_AUDIT_REPORT;

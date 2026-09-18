@@ -38,7 +38,7 @@ export const AudienceDnaView: React.FC<AudienceDnaProps> = ({ client }) => {
       <div className="grid gap-6 lg:grid-cols-3">
         {personas.length === 0 && (
           <div className="space-y-4 lg:col-span-3">
-            <ConnectAccountsPrompt client={client} needed={['meta', 'linkedin']} />
+            <ConnectAccountsPrompt client={client} needed={['meta']} />
             <div className="surface-panel space-y-2 p-6 text-sm text-slate-400">
               <p>{t('audienceEmpty')}</p>
               {(insights?.demographics?.notes || []).map((note) => (

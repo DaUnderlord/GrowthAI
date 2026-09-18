@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ImagePlus, Loader2 } from 'lucide-react';
 import { ClientProfile } from '../types';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { connectedPlatformIds, useLiveInsights } from '../lib/liveApi';
 import { LiveAccountNote } from './LiveAccountNote';
 import { MetricLabel } from './MetricTip';
 
@@ -12,6 +13,7 @@ export function CreativeLabView({ client }: { client: ClientProfile }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<any>(null);
+  const { insights } = useLiveInsights(client.id);
 
   const onFile = (file?: File) => {
     if (!file) return;
@@ -30,7 +32,7 @@ export function CreativeLabView({ client }: { client: ClientProfile }) {
         calendarTopic: topic,
         hookText: hook,
         campaignGoal: client.primaryGoal,
-        platform: client.platforms.find((p) => p.connected)?.id || 'instagram',
+        platform: connectedPlatformIds(client, insights)[0] || 'instagram',
       }));
       if (!result.ok) setError(result.error);
       else setAnalysis(result.data.analysis);

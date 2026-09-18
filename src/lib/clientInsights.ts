@@ -1,127 +1,4 @@
-import { ClientProfile, ContentCalendarItem, PostPerformance, PlatformType } from '../types';
-
-function contentTypeToPostType(contentType: string): PostPerformance['postType'] {
-  const lower = contentType.toLowerCase();
-  if (lower.includes('reel') || lower.includes('video')) return 'Reel';
-  if (lower.includes('carousel')) return 'Carousel';
-  if (lower.includes('story')) return 'Story';
-  if (lower.includes('ad')) return 'Ad Campaign';
-  return 'Article';
-}
-
-function platformFromString(value: string): PlatformType {
-  const normalized = value.toLowerCase().replace(/\s+/g, '_') as PlatformType;
-  const allowed: PlatformType[] = [
-    'instagram',
-    'facebook',
-    'tiktok',
-    'linkedin',
-    'youtube',
-    'google_analytics',
-    'whatsapp',
-    'meta_ads',
-    'google_ads',
-  ];
-  return allowed.includes(normalized) ? normalized : 'instagram';
-}
-
-function statusFromScore(score: number, ageDays: number): PostPerformance['status'] {
-  if (score >= 85) return 'viral';
-  if (score >= 70) return ageDays > 21 ? 'decaying' : 'performing';
-  return 'underperforming';
-}
-
-export function buildPostSignalsFromCalendar(
-  items: ContentCalendarItem[],
-  client: ClientProfile
-): PostPerformance[] {
-  const eligible = items.filter((item) =>
-    ['published', 'scheduled', 'needs_correction'].includes(item.status)
-  );
-
-  if (eligible.length === 0) {
-    return buildPostSignalsFromPlatforms(client);
-  }
-
-  const healthFactor = Math.max(client.engagementHealth, 20) / 100;
-
-  return eligible
-    .slice()
-    .sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`))
-    .slice(0, 12)
-    .map((item, index) => {
-      const score = Math.round(item.aiScore || 72);
-      const reach = Math.round(score * 420 * (healthFactor + 0.4));
-      const impressions = Math.round(reach * 1.35);
-      const saves = Math.round(reach * 0.04 * (score / 100));
-      const shares = Math.round(reach * 0.018 * (score / 100));
-      const clicks = Math.round(reach * 0.06);
-      const conversions = Math.round(clicks * 0.08);
-      const ageDays = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(item.date).getTime()) / (1000 * 60 * 60 * 24))
-      );
-      const status = statusFromScore(score, ageDays);
-
-      return {
-        id: item.id,
-        title: item.topic || item.hookText || `Calendar post ${index + 1}`,
-        platform: platformFromString(item.platform),
-        postType: contentTypeToPostType(item.contentType),
-        postDate: item.date,
-        reach,
-        impressions,
-        saves,
-        shares,
-        likes: Math.round(reach * 0.11),
-        comments: Math.round(reach * 0.015),
-        clicks,
-        conversions,
-        viralityScore: score,
-        status,
-        reboostRecommended: status === 'decaying' || (status === 'viral' && ageDays <= 7),
-        hookText: item.hookText || item.topic || '',
-      };
-    });
-}
-
-export function buildPostSignalsFromPlatforms(client: ClientProfile): PostPerformance[] {
-  const connected = client.platforms.filter((p) => p.connected);
-  if (connected.length === 0) return [];
-
-  return connected.slice(0, 6).map((platform, index) => {
-    const score = Math.round(platform.healthScore || client.growthScore || 70);
-    const reach = Math.round((platform.followers || 1000) * 0.08);
-    return {
-      id: `platform-${platform.id}-${index}`,
-      title: `${platform.name} performance snapshot`,
-      platform: platform.id,
-      postType: 'Reel',
-      postDate: new Date().toISOString().slice(0, 10),
-      reach,
-      impressions: Math.round(reach * 1.2),
-      saves: Math.round(reach * 0.035),
-      shares: Math.round(reach * 0.02),
-      likes: Math.round(reach * 0.09),
-      comments: Math.round(reach * 0.012),
-      clicks: Math.round(reach * 0.05),
-      conversions: Math.round(reach * 0.006),
-      viralityScore: score,
-      status: score >= 80 ? 'performing' : 'underperforming',
-      reboostRecommended: (platform.growthRate || 0) >= 10,
-      hookText: `Latest content on ${platform.accountName}`,
-    };
-  });
-}
-
-export function buildPostSignals(
-  client: ClientProfile,
-  calendarItems: ContentCalendarItem[] = []
-): PostPerformance[] {
-  const fromCalendar = buildPostSignalsFromCalendar(calendarItems, client);
-  if (fromCalendar.length > 0) return fromCalendar;
-  return buildPostSignalsFromPlatforms(client);
-}
+import { ClientProfile } from '../types';
 
 export function computeOverviewInsights(
   client: ClientProfile,
@@ -180,7 +57,7 @@ export function parseCalendarAuditMarkdown(markdown: string): {
   suggestedCorrectionsCount: number;
 } {
   const scoreMatch = markdown.match(/(?:quality\s*score|overall\s*score)[^\d]*(\d{1,3})/i);
-  const overallScore = scoreMatch ? Math.min(100, Number(scoreMatch[1])) : 78;
+  const overallScore = scoreMatch ? Math.min(100, Number(scoreMatch[1])) : 0;
 
   const strengths: string[] = [];
   const gapsAndWeaknesses: string[] = [];
@@ -207,7 +84,7 @@ export function parseCalendarAuditMarkdown(markdown: string): {
     }
   }
 
-  const suggestedCorrectionsCount = gapsAndWeaknesses.length || (overallScore < 80 ? 3 : 0);
+  const suggestedCorrectionsCount = gapsAndWeaknesses.length;
 
   return {
     overallScore,

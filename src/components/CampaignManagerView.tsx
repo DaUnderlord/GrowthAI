@@ -14,6 +14,7 @@ import {
   subscribeToCampaigns,
 } from '../lib/supabase';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { connectedPlatformIds, useLiveInsights } from '../lib/liveApi';
 import { LiveAccountNote } from './LiveAccountNote';
 import { authFetch } from '../lib/authFetch';
 
@@ -41,6 +42,7 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
 
   const [deletingCampId, setDeletingCampId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<'overview' | 'funnel' | 'retargeting'>('overview');
+  const { insights } = useLiveInsights(client.id);
 
   useEffect(() => {
     setFunnelAiOutput(null);
@@ -170,7 +172,7 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
       endDate: iso(end),
       targetMetric: newCampTarget,
       currentProgress: seeded.currentProgress,
-      channels: client.platforms.filter((p) => p.connected).map((p) => p.id).slice(0, 3),
+      channels: connectedPlatformIds(client, insights).slice(0, 3),
       metrics: seeded.metrics,
       funnelStages: seeded.funnelStages,
     };

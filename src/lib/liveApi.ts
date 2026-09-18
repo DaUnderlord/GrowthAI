@@ -62,6 +62,22 @@ export function oauthRedirectUri() {
   return `${window.location.origin}/auth/callback`;
 }
 
+export function liveChannelIds(insights?: LiveInsights | null): string[] {
+  if (!insights) return [];
+  const fromAttribution = (insights.attribution || []).map((row) => String(row.channel || '')).filter(Boolean);
+  const fromPosts = (insights.posts || []).map((post) => String(post.platform || '')).filter(Boolean);
+  return [...new Set([...fromAttribution, ...fromPosts])];
+}
+
+export function connectedPlatformIds(
+  client: { platforms?: Array<{ id: string; connected?: boolean }> },
+  insights?: LiveInsights | null
+): string[] {
+  const fromProfile = (client.platforms || []).filter((p) => p.connected).map((p) => p.id);
+  if (fromProfile.length) return fromProfile;
+  return liveChannelIds(insights);
+}
+
 export function connectionsToPlatforms(rows: any[]): ConnectedPlatform[] {
   return (rows || []).map((row) => ({
     id: row.platform,

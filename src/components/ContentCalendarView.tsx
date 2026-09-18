@@ -21,7 +21,7 @@ import {
   ContentCalendarItem,
   UserProfile,
 } from '../types';
-import { INITIAL_AUDIT_REPORT } from '../data/mockCalendar';
+import { EMPTY_AUDIT_REPORT } from '../data/mockCalendar';
 import {
   calendarBriefUrl,
   createOrUpdateCalendarShare,
@@ -67,7 +67,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
   currentUser,
 }) => {
   const [calendarItems, setCalendarItems] = useState<ContentCalendarItem[]>([]);
-  const [auditReport, setAuditReport] = useState<CalendarAuditReport>(INITIAL_AUDIT_REPORT);
+  const [auditReport, setAuditReport] = useState<CalendarAuditReport>(EMPTY_AUDIT_REPORT);
   const [loading, setLoading] = useState(false);
   const [rawUploadText, setRawUploadText] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -602,7 +602,9 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
           <div>
             <p className="eyebrow-label">Calendar health</p>
             <p className="mt-2 text-base font-medium text-white">
-              Score {auditReport.overallScore} · {client.primaryGoal}
+              {auditReport.overallScore > 0
+                ? `Score ${auditReport.overallScore} · ${client.primaryGoal}`
+                : `No AI audit yet · ${client.primaryGoal}`}
             </p>
           </div>
           <span className="text-link text-xs">{auditOpen ? 'Hide audit' : 'View audit'}</span>

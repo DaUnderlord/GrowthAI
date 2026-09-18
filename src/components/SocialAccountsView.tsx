@@ -20,7 +20,6 @@ import { readJsonOrThrow } from '../lib/httpJson';
 import { connectionsToPlatforms, oauthRedirectUri } from '../lib/liveApi';
 import { MetaOnboarding } from './MetaOnboarding';
 import { ProviderOnboarding, type ProviderFamily } from './ProviderOnboarding';
-import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
 import { MetricLabel } from './MetricTip';
 
 interface SocialAccountsViewProps {
@@ -371,7 +370,6 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
         </div>
       )}
 
-      <ConnectAccountsPrompt client={client} />
       <MetaOnboarding client={client} compact />
 
       {/* Header Banner */}

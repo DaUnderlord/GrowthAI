@@ -6,28 +6,57 @@ import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
 type Family = 'meta' | 'google' | 'tiktok' | 'linkedin';
 
+const FAMILY_PLATFORMS: Record<Family, string[]> = {
+  meta: ['instagram', 'facebook', 'meta_ads', 'whatsapp'],
+  google: ['google_analytics', 'google_ads', 'youtube'],
+  tiktok: ['tiktok'],
+  linkedin: ['linkedin'],
+};
+
 export function ConnectAccountsPrompt({
   client,
-  needed = ['meta', 'google', 'tiktok', 'linkedin'],
+  needed = ['meta'],
 }: {
   client?: ClientProfile | null;
   needed?: Family[];
 }) {
   const { t } = useWorkspaceLocale();
   const [missing, setMissing] = useState<Family[]>([]);
+  const neededKey = needed.join(',');
 
   useEffect(() => {
-    void authFetch('/api/org/providers')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.success) {
-          setMissing(needed);
-          return;
+    let cancelled = false;
+    const families = neededKey.split(',').filter(Boolean) as Family[];
+    void (async () => {
+      try {
+        const orgRes = await authFetch('/api/org/providers');
+        const org = await orgRes.json();
+        let brandPlatforms: string[] = [];
+        if (client?.id) {
+          const connRes = await authFetch(
+            `/api/socials/connections?clientId=${encodeURIComponent(client.id)}`
+          );
+          const conn = await connRes.json();
+          brandPlatforms = (conn?.connections || []).map((row: { platform?: string }) =>
+            String(row.platform || '').toLowerCase()
+          );
         }
-        setMissing(needed.filter((family) => !data.families?.[family]?.configured));
-      })
-      .catch(() => setMissing(needed));
-  }, [needed.join(',')]);
+        if (cancelled) return;
+        setMissing(
+          families.filter((family) => {
+            const brandHas = FAMILY_PLATFORMS[family].some((platform) => brandPlatforms.includes(platform));
+            if (brandHas) return false;
+            return !org?.success || !org?.families?.[family]?.configured;
+          })
+        );
+      } catch {
+        if (!cancelled) setMissing(families);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [neededKey, client?.id]);
 
   if (!missing.length) return null;
 

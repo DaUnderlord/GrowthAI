@@ -1,6 +1,6 @@
 import React from 'react';
 import { ClientProfile } from '../types';
-import { useLiveInsights } from '../lib/liveApi';
+import { liveChannelIds, useLiveInsights } from '../lib/liveApi';
 import { LiveContextSummary } from '../lib/aiApi';
 
 export function LiveAccountNote({
@@ -26,6 +26,7 @@ export function LiveAccountNote({
     liveContext?.platforms?.length
       ? liveContext.platforms
       : (client.platforms || []).filter((p) => p.connected).map((p) => p.name || p.id);
+  const channelLabels = platforms.length ? platforms : liveChannelIds(insights);
   const postCount = liveContext?.realPostCount ?? realPosts.length;
 
   if (loading && !insights && !liveContext) {
@@ -35,7 +36,7 @@ export function LiveAccountNote({
   if (hasLive) {
     return (
       <p className="mt-2 text-[11px] text-emerald-300/90">
-        Using last provider sync{platforms.length ? ` (${platforms.join(', ')})` : ''}
+        Using last provider sync{channelLabels.length ? ` (${channelLabels.join(', ')})` : ''}
         {postCount ? ` · ${postCount} recent posts` : ''}
         {updated ? ` · ${new Date(updated).toLocaleString()}` : ''}. Hour-of-day and any metric not in that snapshot stay unknown.
       </p>

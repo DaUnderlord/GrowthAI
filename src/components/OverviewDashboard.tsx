@@ -118,7 +118,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
         </div>
       </section>
 
-      {!hasLive && <ConnectAccountsPrompt client={client} />}
+      {!hasLive && <ConnectAccountsPrompt client={client} needed={['meta']} />}
 
       <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <section className="reveal-panel">

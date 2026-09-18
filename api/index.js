@@ -2086,7 +2086,7 @@ function personasFromDemographics(rows, clientId) {
     };
   });
 }
-function campaignMetricsFromInsights(insights, budget) {
+function campaignMetricsFromInsights(insights, _budget) {
   const d = insights?.demographics || {};
   const impressions = Number(d.impressions || 0);
   const engagements = Number(d.engagement || 0);
@@ -2094,7 +2094,7 @@ function campaignMetricsFromInsights(insights, budget) {
   const leads = Number(d.conversions || 0);
   const conversions = Number(d.conversions || 0);
   const revenue = Number(d.revenue || 0);
-  const spend = Number(d.spend || 0) || budget;
+  const spend = Number(d.spend || 0);
   const cvr = clicks ? Number((conversions / clicks * 100).toFixed(1)) : 0;
   const cac = conversions ? Number((spend / conversions).toFixed(2)) : 0;
   const roas = spend ? Number((revenue / spend).toFixed(2)) : 0;

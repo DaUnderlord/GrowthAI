@@ -182,6 +182,31 @@ async function main() {
   );
   assert('live insights map clicks and conversions', live.metrics.clicks === 4 && live.metrics.conversions === 1);
   assert('ROI uses reported spend/revenue', live.metrics.roas === 4);
+  const zeroSpend = campaignMetricsFromInsights(
+    { source: 'live_sync', demographics: { conversions: 2, spend: 0, revenue: 0 } },
+    8500
+  );
+  assert(
+    'zero ads spend is not replaced with campaign budget',
+    zeroSpend.metrics.cac === 0 && zeroSpend.metrics.roas === 0
+  );
+  assert(
+    'Attribution does not invent 50k reach paths',
+    !read('src/components/ConversionAttributionView.tsx').includes('50000')
+  );
+  assert(
+    'Calendar does not seed a mock dermatologist audit',
+    read('src/components/ContentCalendarView.tsx').includes('EMPTY_AUDIT_REPORT') &&
+      !read('src/components/ContentCalendarView.tsx').includes('dermatologist')
+  );
+  assert(
+    'campaign channels fall back to last-sync insights',
+    read('src/components/CampaignManagerView.tsx').includes('connectedPlatformIds')
+  );
+  assert(
+    'ConnectAccountsPrompt checks brand social_connections',
+    read('src/components/ConnectAccountsPrompt.tsx').includes('/api/socials/connections')
+  );
 
   const liveApi = read('src/lib/liveApi.ts');
   assert(
