@@ -14,13 +14,14 @@ import { ClientProfile } from '../types';
 import { authFetch } from '../lib/authFetch';
 import { useLiveInsights } from '../lib/liveApi';
 import { MetricLabel } from './MetricTip';
+import { DataLoader } from './DataLoader';
 
 interface AutonomousReboostProps {
   client: ClientProfile;
 }
 
 export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client }) => {
-  const { insights } = useLiveInsights(client.id);
+  const { insights, loading } = useLiveInsights(client.id);
   const [busy, setBusy] = useState(false);
   const [jobNote, setJobNote] = useState<string | null>(null);
   const posts = useMemo(
@@ -42,7 +43,8 @@ export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client
   }, [candidates, selectedPostId]);
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      {loading && !insights && <DataLoader variant="overlay" label="Loading reboost candidates…" />}
       <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

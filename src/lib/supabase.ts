@@ -1163,6 +1163,7 @@ export function subscribeToCampaigns(
       .order('name');
     if (error) {
       console.warn('Error loading campaigns:', error.message);
+      onUpdate([]);
       return;
     }
     onUpdate((data as CampaignRow[] | null)?.map(mapCampaign) || []);
@@ -1217,6 +1218,7 @@ export function subscribeToCalendarItems(
       .eq('client_id', clientId);
     if (error) {
       console.warn('Error loading calendar items:', error.message);
+      onUpdate([]);
       return;
     }
     const items = ((data as CalendarRow[] | null) || [])

@@ -35,6 +35,7 @@ import {
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 import { LiveAccountNote } from './LiveAccountNote';
 import { parseCalendarAuditMarkdown } from '../lib/clientInsights';
+import { DataLoader } from './DataLoader';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 import { dayNameForDate, scheduledAtIso, todayInZone } from '../../shared/calendarPublish';
 import {
@@ -79,6 +80,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
   const [appliedCorrections, setAppliedCorrections] = useState(false);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'local' | 'live'>('local');
+  const [itemsReady, setItemsReady] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
@@ -122,8 +124,10 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
   const [newCta, setNewCta] = useState('Comment "GLOW" for free guide');
 
   useEffect(() => {
+    setItemsReady(false);
     const unsubscribe = subscribeToCalendarItems(client.id, (items) => {
       setCalendarItems(items);
+      setItemsReady(true);
       setSyncStatus('live');
     });
 
@@ -545,7 +549,9 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({
   }, [calendarItems]);
 
   return (
-    <div className="fade-rise space-y-5 sm:space-y-6">
+    <div className="fade-rise relative space-y-5 sm:space-y-6">
+      {!itemsReady && <DataLoader variant="overlay" label="Loading calendar…" />}
+      {loading && <DataLoader variant="overlay" label="Auditing calendar…" />}
       <div className="surface-panel p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">

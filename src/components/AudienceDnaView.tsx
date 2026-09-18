@@ -4,6 +4,7 @@ import { ClientProfile } from '../types';
 import { useLiveInsights } from '../lib/liveApi';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { DataLoader } from './DataLoader';
 import { MetricLabel } from './MetricTip';
 
 interface AudienceDnaProps {
@@ -11,12 +12,16 @@ interface AudienceDnaProps {
 }
 
 export const AudienceDnaView: React.FC<AudienceDnaProps> = ({ client }) => {
-  const { insights } = useLiveInsights(client.id);
+  const { insights, loading } = useLiveInsights(client.id);
   const { t } = useWorkspaceLocale();
   const personas = useMemo(
     () => (insights?.personas?.length ? insights.personas : []),
     [insights]
   );
+
+  if (loading && !insights) {
+    return <DataLoader variant="page" label="Loading audience from last sync…" />;
+  }
 
   return (
     <div className="space-y-6">

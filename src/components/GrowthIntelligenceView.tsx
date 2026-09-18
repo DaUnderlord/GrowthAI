@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { ClientProfile, PostPerformance } from '../types';
 import { MultiAgentLabView } from './MultiAgentLabView';
 import { PredictionEngineView } from './PredictionEngineView';
@@ -10,6 +10,7 @@ import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 import { useLiveInsights } from '../lib/liveApi';
 import { CreativeLabView } from './CreativeLabView';
 import { LiveAccountNote } from './LiveAccountNote';
+import { DataLoader } from './DataLoader';
 import { MetricLabel } from './MetricTip';
 import { METRIC_TIPS, type MetricKey } from '../lib/metricExplain';
 
@@ -59,7 +60,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
   const [insightText, setInsightText] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState<string | null>(null);
-  const { insights } = useLiveInsights(client.id);
+  const { insights, loading } = useLiveInsights(client.id);
 
   const posts = useMemo(
     () => (insights?.posts?.length ? insights.posts : []),
@@ -222,7 +223,9 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
         </div>
       </div>
 
-      {tab === 'signals' && (
+      {tab === 'signals' && loading && !insights ? (
+        <DataLoader label="Loading last-sync posts…" />
+      ) : tab === 'signals' && (
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="surface-subtle p-4">
@@ -340,10 +343,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
 
               <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
                 {insightLoading && (
-                  <div className="flex items-center gap-2 text-sm text-slate-400">
-                    <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
-                    Generating AI insights for this post…
-                  </div>
+                  <DataLoader variant="inline" label="Generating AI insights for this post…" />
                 )}
                 {!insightLoading && insightError && (
                   <p className="mb-3 text-[11px] text-amber-200">{insightError}</p>

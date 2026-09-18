@@ -2,6 +2,7 @@ import React from 'react';
 import { ClientProfile } from '../types';
 import { liveChannelIds, useLiveInsights } from '../lib/liveApi';
 import { LiveContextSummary } from '../lib/aiApi';
+import { DataLoader } from './DataLoader';
 
 export function LiveAccountNote({
   client,
@@ -30,7 +31,11 @@ export function LiveAccountNote({
   const postCount = liveContext?.realPostCount ?? realPosts.length;
 
   if (loading && !insights && !liveContext) {
-    return <p className="mt-2 text-[11px] text-slate-500">Checking connected accounts…</p>;
+    return (
+      <p className="mt-2">
+        <DataLoader variant="inline" label="Checking connected accounts…" />
+      </p>
+    );
   }
 
   if (hasLive) {

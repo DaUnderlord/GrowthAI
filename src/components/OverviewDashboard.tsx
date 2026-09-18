@@ -5,6 +5,7 @@ import { computeOverviewInsights } from '../lib/clientInsights';
 import { useLiveInsights } from '../lib/liveApi';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { DataLoader } from './DataLoader';
 import { MetricLabel } from './MetricTip';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -20,7 +21,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
   onNavigateTab,
 }) => {
   const [attentionOpen, setAttentionOpen] = useState(false);
-  const { insights: live } = useLiveInsights(client.id);
+  const { insights: live, loading } = useLiveInsights(client.id);
   const { t } = useWorkspaceLocale();
   const hasLive = live?.source === 'live_sync';
   const score = hasLive ? live?.growth_score ?? 0 : 0;
@@ -73,6 +74,10 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
 
   const primary = insights[0];
   const rest = insights.slice(1);
+
+  if (loading && !live) {
+    return <DataLoader variant="page" label="Loading last-sync insights…" />;
+  }
 
   return (
     <div className="fade-rise space-y-8">

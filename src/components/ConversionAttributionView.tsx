@@ -4,6 +4,7 @@ import { ClientProfile } from '../types';
 import { useLiveInsights } from '../lib/liveApi';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { DataLoader } from './DataLoader';
 import { MetricLabel } from './MetricTip';
 
 interface ConversionAttributionProps {
@@ -11,7 +12,7 @@ interface ConversionAttributionProps {
 }
 
 export const ConversionAttributionView: React.FC<ConversionAttributionProps> = ({ client }) => {
-  const { insights } = useLiveInsights(client.id);
+  const { insights, loading } = useLiveInsights(client.id);
   const { t } = useWorkspaceLocale();
   const paths = useMemo(
     () => (insights?.attribution?.length ? insights.attribution : []),
@@ -31,6 +32,10 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
     ? Math.round(paths.reduce((s, p) => s + p.cac, 0) / paths.length)
     : 0;
   const hasLive = insights?.source === 'live_sync';
+
+  if (loading && !insights) {
+    return <DataLoader variant="page" label="Loading last-sync attribution…" />;
+  }
 
   const topMetrics = [
     {

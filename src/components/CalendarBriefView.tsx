@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarBriefPayload } from '../types';
 import { fetchCalendarBrief } from '../lib/supabase';
+import { DataLoader } from './DataLoader';
 
 const CRAFT_LABELS: Record<string, string> = {
   designer: 'Graphic designer',
@@ -40,11 +41,7 @@ export const CalendarBriefView: React.FC<CalendarBriefViewProps> = ({ token }) =
   }, [token]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#071018] px-4 text-sm text-slate-400">
-        Loading shared calendar brief…
-      </div>
-    );
+    return <DataLoader variant="page" label="Loading shared calendar brief…" />;
   }
 
   if (error || !payload) {

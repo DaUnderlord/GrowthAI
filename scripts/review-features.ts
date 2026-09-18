@@ -207,6 +207,12 @@ async function main() {
     'ConnectAccountsPrompt checks brand social_connections',
     read('src/components/ConnectAccountsPrompt.tsx').includes('/api/socials/connections')
   );
+  assert(
+    'shared DataLoader covers workspace and last-sync loading',
+    read('src/components/DataLoader.tsx').includes("variant === 'overlay'") &&
+      read('src/App.tsx').includes('Loading workspace data') &&
+      read('src/components/OverviewDashboard.tsx').includes('Loading last-sync insights')
+  );
 
   const liveApi = read('src/lib/liveApi.ts');
   assert(

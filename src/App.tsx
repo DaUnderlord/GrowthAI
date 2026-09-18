@@ -17,6 +17,7 @@ import { SettingsView } from './components/SettingsView';
 import { AuthOnboardingModal } from './components/AuthOnboardingModal';
 import { FeatureOnboardingModal } from './components/FeatureOnboardingModal';
 import { SplashScreen } from './components/SplashScreen';
+import { DataLoader } from './components/DataLoader';
 import { ClientProfile, CurrencyCode, UserProfile } from './types';
 import { WorkspaceLocaleProvider } from './lib/WorkspaceLocale';
 import { BlueprintExplorerView } from './components/BlueprintExplorerView';
@@ -151,10 +152,11 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    setDataReady(true);
+    setDataReady(false);
 
     const unsubscribeClients = subscribeToClients((liveClients) => {
       setClients(liveClients);
+      setDataReady(true);
       setSelectedClient((prev) => {
         const shareId = (window as any).__growthosShareClient as string | undefined;
         if (shareId) {
@@ -362,9 +364,7 @@ export default function App() {
                 </button>
               </div>
             ) : !dataReady || !activeUser ? (
-              <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-400">
-                Loading workspace data…
-              </div>
+              <DataLoader variant="page" label="Loading workspace data…" />
             ) : !activeClient &&
               activeView !== 'agency' &&
               activeView !== 'settings' &&

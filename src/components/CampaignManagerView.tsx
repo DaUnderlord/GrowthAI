@@ -7,7 +7,7 @@ import {
   Trash2,
   TrendingUp,
 } from 'lucide-react';
-import { Campaign, CampaignObjective, CampaignType, ClientProfile } from '../types';
+import { Campaign, CampaignObjective, CampaignType, ClientProfile, PlatformType } from '../types';
 import {
   deleteCampaign,
   saveCampaign,
@@ -16,6 +16,7 @@ import {
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 import { connectedPlatformIds, useLiveInsights } from '../lib/liveApi';
 import { LiveAccountNote } from './LiveAccountNote';
+import { DataLoader } from './DataLoader';
 import { authFetch } from '../lib/authFetch';
 
 interface CampaignManagerProps {
@@ -43,12 +44,15 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
   const [deletingCampId, setDeletingCampId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<'overview' | 'funnel' | 'retargeting'>('overview');
   const { insights } = useLiveInsights(client.id);
+  const [listReady, setListReady] = useState(false);
 
   useEffect(() => {
     setFunnelAiOutput(null);
     setRetargetingActivated({});
+    setListReady(false);
     const unsubscribe = subscribeToCampaigns(client.id, (campaigns) => {
       setCampaignList(campaigns);
+      setListReady(true);
       setSyncStatus('live');
       setSelectedCampaign((prev) => {
         if (prev) {
@@ -172,7 +176,7 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
       endDate: iso(end),
       targetMetric: newCampTarget,
       currentProgress: seeded.currentProgress,
-      channels: connectedPlatformIds(client, insights).slice(0, 3),
+      channels: connectedPlatformIds(client, insights).slice(0, 3) as PlatformType[],
       metrics: seeded.metrics,
       funnelStages: seeded.funnelStages,
     };
@@ -244,7 +248,9 @@ export const CampaignManagerView: React.FC<CampaignManagerProps> = ({ client }) 
   };
 
   return (
-    <div className="fade-rise space-y-5 sm:space-y-6">
+    <div className="fade-rise relative space-y-5 sm:space-y-6">
+      {!listReady && <DataLoader variant="overlay" label="Loading campaigns…" />}
+      {generatingFunnel && <DataLoader variant="overlay" label="Generating funnel strategy…" />}
       <div className="surface-panel p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">

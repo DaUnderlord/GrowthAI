@@ -33,13 +33,20 @@ export async function fetchLiveInsights(clientId: string): Promise<LiveInsights 
 
 export function useLiveInsights(clientId?: string) {
   const [insights, setInsights] = useState<LiveInsights | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(clientId));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId) {
+      setInsights(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
+    setInsights(null);
+    setError(null);
     fetchLiveInsights(clientId)
       .then((data) => {
         if (!cancelled) setInsights(data);

@@ -4,6 +4,7 @@ import { ClientProfile } from '../types';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 import { connectedPlatformIds, useLiveInsights } from '../lib/liveApi';
 import { LiveAccountNote } from './LiveAccountNote';
+import { DataLoader } from './DataLoader';
 import { MetricLabel } from './MetricTip';
 
 export function CreativeLabView({ client }: { client: ClientProfile }) {
@@ -44,7 +45,8 @@ export function CreativeLabView({ client }: { client: ClientProfile }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="relative space-y-4">
+      {busy && <DataLoader variant="overlay" label="Analyzing creative…" />}
       <div className="surface-panel space-y-3 p-5">
         <div className="flex items-center gap-2">
           <ImagePlus className="h-4 w-4 text-cyan-300" />

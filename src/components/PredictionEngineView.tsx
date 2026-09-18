@@ -13,6 +13,7 @@ import {
 import { ClientProfile, PredictionResult } from '../types';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 import { LiveAccountNote } from './LiveAccountNote';
+import { DataLoader } from './DataLoader';
 import { MetricLabel } from './MetricTip';
 
 interface PredictionEngineProps {
@@ -53,7 +54,8 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      {loading && <DataLoader variant="overlay" label="Predicting from last-sync posts…" />}
       {/* Header Banner */}
       <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>

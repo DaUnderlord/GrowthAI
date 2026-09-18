@@ -3,6 +3,7 @@ import { ClientProfile } from '../types';
 import { authFetch } from '../lib/authFetch';
 import { navigateView } from '../lib/liveApi';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
+import { DataLoader } from './DataLoader';
 
 type Family = 'meta' | 'google' | 'tiktok' | 'linkedin';
 
@@ -22,11 +23,13 @@ export function ConnectAccountsPrompt({
 }) {
   const { t } = useWorkspaceLocale();
   const [missing, setMissing] = useState<Family[]>([]);
+  const [checking, setChecking] = useState(true);
   const neededKey = needed.join(',');
 
   useEffect(() => {
     let cancelled = false;
     const families = neededKey.split(',').filter(Boolean) as Family[];
+    setChecking(true);
     void (async () => {
       try {
         const orgRes = await authFetch('/api/org/providers');
@@ -51,12 +54,18 @@ export function ConnectAccountsPrompt({
         );
       } catch {
         if (!cancelled) setMissing(families);
+      } finally {
+        if (!cancelled) setChecking(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [neededKey, client?.id]);
+
+  if (checking) {
+    return <DataLoader variant="inline" label="Checking connected apps…" />;
+  }
 
   if (!missing.length) return null;
 

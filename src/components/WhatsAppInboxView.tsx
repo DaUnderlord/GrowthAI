@@ -22,6 +22,7 @@ import {
 } from '../lib/whatsapp';
 import { MetaOnboarding } from './MetaOnboarding';
 import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { DataLoader } from './DataLoader';
 import { authFetch } from '../lib/authFetch';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
@@ -66,6 +67,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [wabaId, setWabaId] = useState('');
   const [connectBusy, setConnectBusy] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [inboxReady, setInboxReady] = useState(false);
   const [verifyToken, setVerifyToken] = useState('');
   const [filterStage, setFilterStage] = useState<'all' | LeadStage>('all');
 
@@ -102,8 +104,10 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   }, [client.id]);
 
   useEffect(() => {
+    setInboxReady(false);
     return subscribeToClientConversations(client.id, (rows) => {
       setConversations(rows);
+      setInboxReady(true);
       setSelectedId((prev) => {
         if (prev && rows.some((r) => r.id === prev)) return prev;
         return rows[0]?.id || null;
@@ -221,7 +225,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   };
 
   return (
-    <div className="fade-rise space-y-4">
+    <div className="fade-rise relative space-y-4">
+      {!inboxReady && <DataLoader variant="overlay" label="Loading WhatsApp inbox…" />}
+      {(connectBusy || suggesting) && (
+        <DataLoader
+          variant="overlay"
+          label={connectBusy ? 'Connecting WhatsApp…' : 'Drafting reply…'}
+        />
+      )}
       <div className="surface-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
         <div>
           <p className="eyebrow-label">{t('whatsapp')}</p>

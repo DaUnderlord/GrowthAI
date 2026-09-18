@@ -21,6 +21,7 @@ import { connectionsToPlatforms, oauthRedirectUri } from '../lib/liveApi';
 import { MetaOnboarding } from './MetaOnboarding';
 import { ProviderOnboarding, type ProviderFamily } from './ProviderOnboarding';
 import { MetricLabel } from './MetricTip';
+import { DataLoader } from './DataLoader';
 
 interface SocialAccountsViewProps {
   client: ClientProfile;
@@ -32,6 +33,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   const [platforms, setPlatforms] = useState<ConnectedPlatform[]>(client.platforms);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [connectionsReady, setConnectionsReady] = useState(false);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -72,6 +74,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
 
   useEffect(() => {
     let cancelled = false;
+    setConnectionsReady(false);
     void authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`)
       .then((res) => readJsonOrThrow<{ success?: boolean; connections?: unknown[] }>(res))
       .then((data) => {
@@ -82,7 +85,10 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
           onUpdatePlatforms(live);
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setConnectionsReady(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -362,7 +368,9 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      {!connectionsReady && <DataLoader variant="overlay" label="Loading connected accounts…" />}
+      {syncingId && <DataLoader variant="overlay" label="Syncing live metrics…" />}
       {toastMessage && (
         <div className="fixed top-20 right-8 z-50 bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs animate-bounce">
           <CheckCircle2 className="w-4 h-4 text-emerald-200" />
