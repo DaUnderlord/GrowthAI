@@ -137,18 +137,18 @@ export function computeOverviewInsights(client: ClientProfile) {
         : 'Connect social accounts to track momentum',
       meta: avgGrowth > 0 ? `+${avgGrowth.toFixed(1)}%` : `${client.growthScore}/100`,
       body: connectedPlatforms.length
-        ? `${connectedPlatforms.length} live channel(s) synced for ${client.name}. Growth score reflects your workspace metrics.`
+        ? `${connectedPlatforms.length} live channel(s) synced for ${client.name}. Growth score is a workspace formula from last Sync (reach, engagement, conversions, health) — not a Meta forecast.`
         : 'Link Instagram, TikTok, or other channels in Agency Hub to populate live growth signals.',
     },
     {
       title: 'Revenue efficiency',
-      meta: `${client.roiMultiplier || 1}x ROI`,
-      body: 'ROI multiplier updates as campaigns progress and invoice data is recorded.',
+      meta: `${client.roiMultiplier || 0}x ROI`,
+      body: 'ROAS is last-sync ads conversion value ÷ spend. 0x means no ads account is selected or Meta returned no purchase value — not hospital billing.',
     },
     {
       title: 'Audience engagement health',
       meta: `${client.engagementHealth}/100`,
-      body: 'Engagement health combines calendar quality scores and connected platform health.',
+      body: 'Likes, comments, and saves versus reach from last Sync. Sentiment currently copies this number.',
     },
   ];
 }

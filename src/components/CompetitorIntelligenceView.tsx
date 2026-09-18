@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ClientProfile } from '../types';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { LiveAccountNote } from './LiveAccountNote';
 
 interface CompetitorIntelligenceProps {
   client: ClientProfile;
@@ -63,8 +64,9 @@ export const CompetitorIntelligenceView: React.FC<CompetitorIntelligenceProps> =
             <h2 className="text-xl font-bold text-white">Competitor Intelligence Radar</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Real-time competitor benchmarking, share of voice tracking, content gap discovery, and counter-strategy generation for <span className="text-indigo-300 font-semibold">{client.name}</span>.
+            Public web search for the competitor. {client.name}&apos;s numbers come only from last Sync — competitor follower counts are only as good as public sources.
           </p>
+          <LiveAccountNote client={client} />
         </div>
         <div className="flex items-center gap-2 text-xs bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
           <Sparkles className="w-4 h-4 text-cyan-400" />

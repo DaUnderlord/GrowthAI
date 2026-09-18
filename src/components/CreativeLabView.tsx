@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ImagePlus, Loader2 } from 'lucide-react';
 import { ClientProfile } from '../types';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { LiveAccountNote } from './LiveAccountNote';
+import { MetricLabel } from './MetricTip';
 
 export function CreativeLabView({ client }: { client: ClientProfile }) {
   const [topic, setTopic] = useState('');
@@ -47,8 +49,9 @@ export function CreativeLabView({ client }: { client: ClientProfile }) {
           <h3 className="text-sm font-semibold text-white">Multimodal creative analysis</h3>
         </div>
         <p className="text-xs text-slate-400">
-          Upload a still or thumbnail. Gemini reads the image against {client.name}&apos;s goal.
+          Upload a still or thumbnail. Gemini reads the image against {client.name}&apos;s last-sync posts when they exist. Predicted success is 0 without a live sync.
         </p>
+        <LiveAccountNote client={client} />
         <input
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
@@ -69,9 +72,15 @@ export function CreativeLabView({ client }: { client: ClientProfile }) {
       </div>
       {analysis && (
         <div className="surface-panel space-y-2 p-5 text-sm text-slate-300">
-          <p>Visual score: {analysis.visualScore}</p>
-          <p>Goal match: {analysis.campaignGoalMatchPct}%</p>
-          <p>Predicted success: {analysis.predictedSuccessRate}%</p>
+          <p>
+            <MetricLabel metric="creativeVisual">Visual score</MetricLabel>: {analysis.visualScore}
+          </p>
+          <p>
+            <MetricLabel metric="creativeGoalMatch">Goal match</MetricLabel>: {analysis.campaignGoalMatchPct}%
+          </p>
+          <p>
+            <MetricLabel metric="creativeSuccess">Predicted success</MetricLabel>: {analysis.predictedSuccessRate}%
+          </p>
           <p className="whitespace-pre-line">{analysis.visualHookAudit}</p>
         </div>
       )}

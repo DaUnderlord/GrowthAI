@@ -10,6 +10,8 @@ import { callGrowthAi, withBrandContext } from '../lib/aiApi';
 import { useLiveInsights } from '../lib/liveApi';
 import { CreativeLabView } from './CreativeLabView';
 import { LiveAccountNote } from './LiveAccountNote';
+import { MetricLabel } from './MetricTip';
+import { METRIC_TIPS, type MetricKey } from '../lib/metricExplain';
 
 interface GrowthIntelligenceProps {
   client: ClientProfile;
@@ -43,8 +45,8 @@ function buildLocalInsights(post: PostPerformance, client: ClientProfile): strin
     '',
     '**What to do next**',
     post.reboostRecommended
-      ? '1. Reboost within 24–48h to lookalike + engagers (save/share audiences).'
-      : '1. Hold paid; harvest organic comments for the next creative brief.',
+      ? '1. Flagged because reach exists and saves are under 5 — a workspace rule, not proof paid will work. Reboost only after a Meta Ads account is selected.'
+      : '1. Hold paid; use comments on this post to brief the next caption.',
     '2. Spin 2 hook variants (curiosity + proof) keeping the same core promise.',
     `3. Align CTA to ${client.name}'s primary goal — move viewers into the booked/lead path faster.`,
     '4. Package a carousel or Story follow-up that answers the top comment objections.',
@@ -74,14 +76,14 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
     return impressions > 0 ? ((saves / impressions) * 100).toFixed(1) : '0.0';
   }, [posts]);
 
-  const tabs: { id: SuiteTab; label: string }[] = [
-    { id: 'signals', label: 'Signals' },
-    { id: 'agents', label: 'Agents' },
-    { id: 'predict', label: 'Predict' },
-    { id: 'optimize', label: 'Optimize' },
-    { id: 'competitors', label: 'Competitors' },
-    { id: 'reboost', label: 'Reboost' },
-    { id: 'creative', label: 'Creative' },
+  const tabs: { id: SuiteTab; label: string; metric: MetricKey }[] = [
+    { id: 'signals', label: 'Signals', metric: 'aiSignals' },
+    { id: 'agents', label: 'Agents', metric: 'aiAgents' },
+    { id: 'predict', label: 'Predict', metric: 'aiPredict' },
+    { id: 'optimize', label: 'Optimize', metric: 'aiOptimize' },
+    { id: 'competitors', label: 'Competitors', metric: 'aiCompetitors' },
+    { id: 'reboost', label: 'Reboost', metric: 'aiReboost' },
+    { id: 'creative', label: 'Creative', metric: 'aiCreative' },
   ];
 
   const selectedPost = useMemo(
@@ -202,11 +204,7 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
         <p className="eyebrow-label">Growth AI Suite</p>
         <h2 className="font-display mt-1 text-3xl font-medium text-white">Intelligence for {client.name}</h2>
         <LiveAccountNote client={client} />
-        {tab === 'signals' && (
-          <p className="mt-2 text-xs text-slate-500">
-            Signals derive from your content calendar and connected social accounts for this brand.
-          </p>
-        )}
+        <p className="mt-2 text-xs leading-5 text-slate-500">{METRIC_TIPS[tabs.find((row) => row.id === tab)?.metric || 'aiSignals'].body}</p>
         <div className="mt-4 flex flex-wrap gap-1">
           {tabs.map((t) => (
             <button
@@ -228,15 +226,19 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="surface-subtle p-4">
-              <p className="text-xs text-slate-500">Reach (tracked posts)</p>
+              <p className="text-xs text-slate-500">
+                <MetricLabel metric="reach">Reach (tracked posts)</MetricLabel>
+              </p>
               <p className="font-display mt-2 text-3xl font-medium text-white">
                 {aggregateReach > 0 ? aggregateReach.toLocaleString() : '—'}
               </p>
             </div>
             <div className="surface-subtle p-4">
-              <p className="text-xs text-slate-500">Save rate</p>
+              <p className="text-xs text-slate-500">
+                <MetricLabel metric="saveRate">Save rate</MetricLabel>
+              </p>
               <p className="font-display mt-2 text-3xl font-medium text-white">
-                {posts.length > 0 ? `${aggregateSaveRate}%` : '—'}
+                {posts.length > 0 && Number(aggregateSaveRate) > 0 ? `${aggregateSaveRate}%` : '—'}
               </p>
             </div>
           </div>
@@ -268,10 +270,16 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-white">{post.title}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {post.postType} · Reach {post.reach.toLocaleString()}
+                        <MetricLabel metric="postType">{post.postType}</MetricLabel>
+                        {' · '}
+                        <MetricLabel metric="reach">Reach {post.reach.toLocaleString()}</MetricLabel>
                       </p>
                     </div>
-                    <span className="text-[11px] capitalize text-slate-500">{post.status}</span>
+                    <span className="text-[11px] capitalize text-slate-500">
+                      <MetricLabel metric="postStatus" align="right">
+                        {post.status}
+                      </MetricLabel>
+                    </span>
                   </button>
                 );
               })}
@@ -303,19 +311,27 @@ export const GrowthIntelligenceView: React.FC<GrowthIntelligenceProps> = ({ clie
 
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="surface-subtle p-3">
-                  <p className="text-[11px] text-slate-500">Virality</p>
+                  <p className="text-[11px] text-slate-500">
+                    <MetricLabel metric="viralityScore">Virality</MetricLabel>
+                  </p>
                   <p className="mt-1 text-sm font-semibold text-white">{selectedPost.viralityScore}%</p>
                 </div>
                 <div className="surface-subtle p-3">
-                  <p className="text-[11px] text-slate-500">Saves</p>
+                  <p className="text-[11px] text-slate-500">
+                    <MetricLabel metric="saves">Saves</MetricLabel>
+                  </p>
                   <p className="mt-1 text-sm font-semibold text-white">{selectedPost.saves.toLocaleString()}</p>
                 </div>
                 <div className="surface-subtle p-3">
-                  <p className="text-[11px] text-slate-500">Clicks</p>
+                  <p className="text-[11px] text-slate-500">
+                    <MetricLabel metric="clicks">Clicks</MetricLabel>
+                  </p>
                   <p className="mt-1 text-sm font-semibold text-white">{selectedPost.clicks.toLocaleString()}</p>
                 </div>
                 <div className="surface-subtle p-3">
-                  <p className="text-[11px] text-slate-500">Conversions</p>
+                  <p className="text-[11px] text-slate-500">
+                    <MetricLabel metric="conversions">Conversions</MetricLabel>
+                  </p>
                   <p className="mt-1 text-sm font-semibold text-white">
                     {selectedPost.conversions.toLocaleString()}
                   </p>

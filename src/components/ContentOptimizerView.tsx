@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ClientProfile } from '../types';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { LiveAccountNote } from './LiveAccountNote';
 
 interface ContentOptimizerProps {
   client: ClientProfile;
@@ -68,8 +69,9 @@ export const ContentOptimizerView: React.FC<ContentOptimizerProps> = ({ client }
             <h2 className="text-xl font-bold text-white">AI Content Optimization Agent</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Generate high-converting hooks, retention captions, SEO hashtag stacks, and DM CTA strategies tailored to <span className="text-indigo-300 font-semibold">{client.name}</span>.
+            Drafts hooks and captions that should cite a last-sync post or metric for {client.name}. If there are no recent posts, it will say so instead of inventing winners.
           </p>
+          <LiveAccountNote client={client} />
         </div>
         <div className="flex items-center gap-2 text-xs bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
           <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />

@@ -5,6 +5,7 @@ import { computeOverviewInsights } from '../lib/clientInsights';
 import { useLiveInsights } from '../lib/liveApi';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { MetricLabel } from './MetricTip';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface OverviewDashboardProps {
@@ -54,7 +55,11 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
           </div>
 
           <div className="shrink-0">
-            <p className="text-xs text-slate-500">{t('growthScore')}</p>
+            <p className="text-xs text-slate-500">
+              <MetricLabel metric="growthScore" align="right">
+                {t('growthScore')}
+              </MetricLabel>
+            </p>
             <p className="font-display mt-1 text-5xl font-medium tracking-tight text-white">
               {score}
               <span className="text-2xl text-slate-500">/100</span>
@@ -117,7 +122,11 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
 
         <section className="surface-panel p-5">
           <p className="eyebrow-label">Performance</p>
-          <h2 className="font-display mt-2 text-2xl font-medium text-white">Reach & revenue</h2>
+          <h2 className="font-display mt-2 text-2xl font-medium text-white">
+            <MetricLabel metric="reach24h">Reach</MetricLabel>
+            {' & '}
+            <MetricLabel metric="revenue">revenue</MetricLabel>
+          </h2>
           {!trends?.length && (
             <p className="mt-3 text-xs text-slate-500">{t('noLiveData')}</p>
           )}

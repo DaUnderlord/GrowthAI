@@ -13,6 +13,7 @@ import {
 import { ClientProfile } from '../types';
 import { authFetch } from '../lib/authFetch';
 import { useLiveInsights } from '../lib/liveApi';
+import { MetricLabel } from './MetricTip';
 
 interface AutonomousReboostProps {
   client: ClientProfile;
@@ -49,8 +50,7 @@ export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client
             <h2 className="text-xl font-bold text-white">Autonomous Reboost Agent</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Detects high-performing or decaying posts with evergreen potential for{' '}
-            <span className="text-indigo-300 font-semibold">{client.name}</span>.
+            Lists last-sync posts flagged because they have some reach and fewer than 5 saves. Suggested spend is {client.name}&apos;s budget × 2%, not a Meta bid. Paid boost needs a selected ads account.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-amber-300">
@@ -88,13 +88,19 @@ export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client
                   <span className="uppercase font-bold text-cyan-400">
                     {post.platform} • {post.postType}
                   </span>
-                  <span className="font-semibold text-emerald-400">{post.viralityScore}% Virality</span>
+                  <span className="font-semibold text-emerald-400">
+                    <MetricLabel metric="viralityScore" align="right">
+                      {post.viralityScore}% Virality
+                    </MetricLabel>
+                  </span>
                 </div>
                 <h4 className="text-xs font-bold leading-snug line-clamp-2">{post.title}</h4>
                 <div className="flex items-center justify-between text-[11px] mt-2 text-slate-400">
                   <span>{post.saves.toLocaleString()} Saves</span>
                   <span className="text-indigo-300 font-semibold">
-                    {post.reboostRecommended ? 'Reboost Recommended' : 'Active Momentum'}
+                    <MetricLabel metric="reboostFlag">
+                      {post.reboostRecommended ? 'Reboost Recommended' : 'Active Momentum'}
+                    </MetricLabel>
                   </span>
                 </div>
               </div>
@@ -111,8 +117,14 @@ export const AutonomousReboostView: React.FC<AutonomousReboostProps> = ({ client
               <p className="text-xs text-slate-400 mt-1">{selectedPost.hookText}</p>
             </div>
             <div className="text-right text-xs text-slate-400">
-              <p>Reach {selectedPost.reach.toLocaleString()}</p>
-              <p className="text-emerald-400">{selectedPost.viralityScore}% virality</p>
+              <p>
+                <MetricLabel metric="reach">Reach {selectedPost.reach.toLocaleString()}</MetricLabel>
+              </p>
+              <p className="text-emerald-400">
+                <MetricLabel metric="viralityScore" align="right">
+                  {selectedPost.viralityScore}% virality
+                </MetricLabel>
+              </p>
             </div>
           </div>
 

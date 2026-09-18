@@ -189,6 +189,18 @@ async function main() {
     liveApi.includes('connectionId: row.id') && liveApi.includes('followers: Number(row.followers || 0)')
   );
 
+  const metricExplain = read('src/lib/metricExplain.ts');
+  const metricTip = read('src/components/MetricTip.tsx');
+  assert(
+    'metric glossary covers growth score and AI suite tabs',
+    metricExplain.includes('growthScore:') &&
+      metricExplain.includes('aiPredict:') &&
+      metricExplain.includes('not a Meta or Gemini forecast')
+  );
+  assert('MetricTip button explains the metric', metricTip.includes('What ${tip.title} means'));
+  assert('MetricTip is used on Overview growth score', read('src/components/OverviewDashboard.tsx').includes('metric="growthScore"'));
+  assert('Growth AI Suite explains the active tab', read('src/components/GrowthIntelligenceView.tsx').includes('METRIC_TIPS'));
+
   const routes = read('server/social/routes.ts');
   assert('OAuth callback HTML is escaped', routes.includes('function escapeHtml'));
   assert('OAuth postMessage uses opener origin', routes.includes('row.redirect_origin'));

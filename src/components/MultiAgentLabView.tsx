@@ -14,6 +14,7 @@ import {
 import { ClientProfile } from '../types';
 import { GROWTH_AGENT_ROSTER } from '../lib/clientInsights';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { LiveAccountNote } from './LiveAccountNote';
 
 interface MultiAgentLabProps {
   client: ClientProfile;
@@ -57,8 +58,9 @@ export const MultiAgentLabView: React.FC<MultiAgentLabProps> = ({ client }) => {
             <h2 className="text-xl font-bold text-white">Autonomous Multi-Agent Growth Lab</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            7 Specialized AI Agents collaborating in real-time to analyze, predict, and execute growth strategies for <span className="text-indigo-300 font-semibold">{client.name}</span>.
+            One Gemini run that role-plays seven specialists. They only see last-sync followers, posts, audience, and listed data gaps for {client.name}. 90-day ROI is a projection, not ads data.
           </p>
+          <LiveAccountNote client={client} />
         </div>
         <div className="flex items-center gap-2 text-xs bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
           <Users className="w-4 h-4 text-indigo-400" />

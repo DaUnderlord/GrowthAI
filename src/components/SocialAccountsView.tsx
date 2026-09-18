@@ -21,6 +21,7 @@ import { connectionsToPlatforms, oauthRedirectUri } from '../lib/liveApi';
 import { MetaOnboarding } from './MetaOnboarding';
 import { ProviderOnboarding, type ProviderFamily } from './ProviderOnboarding';
 import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { MetricLabel } from './MetricTip';
 
 interface SocialAccountsViewProps {
   client: ClientProfile;
@@ -434,7 +435,9 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
               {/* Stats Box */}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block">Audience / Followers</span>
+                  <span className="text-[10px] text-slate-500 block">
+                    <MetricLabel metric="followers">Audience / Followers</MetricLabel>
+                  </span>
                   <span className="font-extrabold text-white text-sm">
                     {p.followers > 0 ? p.followers.toLocaleString() : 'N/A (Ad Account)'}
                   </span>

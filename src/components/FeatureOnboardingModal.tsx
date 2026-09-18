@@ -30,7 +30,7 @@ const STEPS = [
   {
     icon: Target,
     title: 'Growth AI Suite',
-    body: 'Growth AI can draft campaigns and creative once you have a brand. Paid reboost and ad metrics need a connected ads account.',
+    body: 'Growth AI reads last-sync posts, followers, and listed gaps. It will not invent reach or posting hours. Tap the ? next to a metric to see whether the number is from Meta, a workspace formula, or a Gemini guess. Paid reboost needs a selected ads account.',
   },
   {
     icon: Calendar,

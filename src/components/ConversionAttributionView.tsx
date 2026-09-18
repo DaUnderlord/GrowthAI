@@ -4,6 +4,7 @@ import { ClientProfile, ConversionPath, PlatformType } from '../types';
 import { useLiveInsights } from '../lib/liveApi';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
+import { MetricLabel } from './MetricTip';
 
 interface ConversionAttributionProps {
   client: ClientProfile;
@@ -91,6 +92,7 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
   const previous = trends[trends.length - 2];
   const revenue = latest?.revenue || paths.reduce((s, p) => s + p.totalRevenueGenerated, 0);
   const leads = latest?.leads || 0;
+  const roi = Number(insights?.roi_multiplier ?? 0);
   const revDelta =
     previous?.revenue && previous.revenue > 0
       ? Math.round(((revenue - previous.revenue) / previous.revenue) * 100)
@@ -102,23 +104,27 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
   const topMetrics = [
     {
       label: 'Attributed revenue',
+      metric: 'revenue' as const,
       value: `$${revenue.toLocaleString()}`,
-      helper: revDelta != null ? `${revDelta >= 0 ? '+' : ''}${revDelta}% vs previous month` : 'From client growth trends',
+      helper: revDelta != null ? `${revDelta >= 0 ? '+' : ''}${revDelta}% vs previous month` : 'Ads conversion value from last Sync — not invoices',
     },
     {
       label: 'Average CAC',
+      metric: 'cac' as const,
       value: `$${avgCac}`,
-      helper: 'Blended across connected channels',
+      helper: 'Spend ÷ conversions on connected channels',
     },
     {
       label: 'Blended ROAS',
-      value: `${client.roiMultiplier}x`,
-      helper: 'Client ROI multiplier',
+      metric: 'roas' as const,
+      value: `${roi}x`,
+      helper: 'Last-sync conversion value ÷ spend',
     },
     {
       label: 'Lead volume',
+      metric: 'conversions' as const,
       value: leads ? leads.toLocaleString() : '—',
-      helper: latest ? `${latest.month} performance` : 'Add trend data on client',
+      helper: latest ? `${latest.month} last-sync conversions` : 'No conversions in last Sync',
     },
   ];
 
@@ -130,7 +136,7 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
             <p className="eyebrow-label">{t('attribution')}</p>
             <h2 className="mt-1 text-2xl font-semibold text-white">Performance explained in plain terms</h2>
             <p className="mt-3 text-sm leading-6 text-slate-400">
-              Paths and metrics are computed from {client.name}&apos;s platforms and growth trends.
+              Paths use last-sync reach, engagement, spend, and conversions for {client.name}. 0 spend means no ads account is selected yet.
             </p>
           </div>
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-medium text-emerald-100">
@@ -144,7 +150,9 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
       <div className="grid gap-3 md:grid-cols-4">
         {topMetrics.map((metric) => (
           <div key={metric.label} className="surface-panel p-4">
-            <p className="text-xs text-slate-400">{metric.label}</p>
+            <p className="text-xs text-slate-400">
+              <MetricLabel metric={metric.metric}>{metric.label}</MetricLabel>
+            </p>
             <p className="mt-3 text-2xl font-semibold text-white">{metric.value}</p>
             <p className="mt-2 text-xs text-slate-500">{metric.helper}</p>
           </div>
@@ -170,13 +178,13 @@ export const ConversionAttributionView: React.FC<ConversionAttributionProps> = (
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-emerald-200">
-                    Total Rev: ${path.totalRevenueGenerated.toLocaleString()}
+                    <MetricLabel metric="revenue">Total Rev: ${path.totalRevenueGenerated.toLocaleString()}</MetricLabel>
                   </span>
                   <span className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-cyan-200">
-                    ROAS: {path.roas}x
+                    <MetricLabel metric="roas">ROAS: {path.roas}x</MetricLabel>
                   </span>
                   <span className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-slate-300">
-                    CAC: ${path.cac}
+                    <MetricLabel metric="cac">CAC: ${path.cac}</MetricLabel>
                   </span>
                 </div>
               </div>

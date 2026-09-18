@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { ClientProfile, PredictionResult } from '../types';
 import { callGrowthAi, withBrandContext } from '../lib/aiApi';
+import { LiveAccountNote } from './LiveAccountNote';
+import { MetricLabel } from './MetricTip';
 
 interface PredictionEngineProps {
   client: ClientProfile;
@@ -60,8 +62,9 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
             <h2 className="text-xl font-bold text-white">AI Virality & Performance Prediction Engine</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Estimate reach from this brand's last-sync followers, 24h reach, and recent provider posts. Posting hour is unknown — we do not store hour-of-day Insights.
+            Compare a hook to this brand&apos;s last-sync posts. Reach is capped against followers / 24h reach. Posting hour stays unknown.
           </p>
+          <LiveAccountNote client={client} />
         </div>
         <div className="flex items-center gap-2 text-xs bg-indigo-500/10 px-3 py-1.5 rounded-xl border border-indigo-500/20 text-indigo-300">
           <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
@@ -163,7 +166,9 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
               )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Virality Probability</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold mb-1 inline-flex items-center justify-center gap-1">
+                    <MetricLabel metric="predictVirality">Virality Probability</MetricLabel>
+                  </span>
                   <span className="text-3xl font-extrabold text-cyan-400">{prediction.viralityScore}%</span>
                   <span className="text-[10px] text-slate-400 block mt-1">
                     {prediction.liveDataUsed
@@ -175,19 +180,25 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Estimated Reach</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold mb-1 inline-flex items-center justify-center gap-1">
+                    <MetricLabel metric="predictReach">Estimated Reach</MetricLabel>
+                  </span>
                   <span className="text-xl font-extrabold text-white">{prediction.estimatedReach}</span>
                   <span className="text-[10px] text-slate-400 block mt-1">Vs last-sync 24h reach</span>
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Engagement Index</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold mb-1 inline-flex items-center justify-center gap-1">
+                    <MetricLabel metric="predictEngagement">Engagement Index</MetricLabel>
+                  </span>
                   <span className="text-2xl font-extrabold text-indigo-400">{prediction.engagementScore}/100</span>
                   <span className="text-[10px] text-slate-400 block mt-1">Saves & Shares</span>
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-center">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Conversion CVR</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold mb-1 inline-flex items-center justify-center gap-1">
+                    <MetricLabel metric="predictConversion">Conversion CVR</MetricLabel>
+                  </span>
                   <span className="text-2xl font-extrabold text-emerald-400">{prediction.conversionProbability}</span>
                   <span className="text-[10px] text-slate-400 block mt-1">Lead Likelihood</span>
                 </div>
@@ -200,12 +211,17 @@ export const PredictionEngineView: React.FC<PredictionEngineProps> = ({ client }
                     <Clock className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="text-xs text-slate-400 font-medium">Posting hour (not in last sync):</span>
+                    <span className="text-xs text-slate-400 font-medium">
+                      <MetricLabel metric="predictPostingTime">Posting hour (not in last sync):</MetricLabel>
+                    </span>
                     <h4 className="text-sm font-bold text-white">{prediction.optimalPostingTime}</h4>
                   </div>
                 </div>
                 <div className="text-xs bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-slate-300">
-                  Model Confidence Index: <span className="text-emerald-400 font-bold">{prediction.confidenceScore}%</span>
+                  <MetricLabel metric="predictConfidence" align="right">
+                    Model Confidence Index:
+                  </MetricLabel>{' '}
+                  <span className="text-emerald-400 font-bold">{prediction.confidenceScore}%</span>
                 </div>
               </div>
 

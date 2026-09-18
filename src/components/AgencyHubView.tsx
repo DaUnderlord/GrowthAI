@@ -8,6 +8,7 @@ import { ClientProfile, ConnectedPlatform, UserProfile } from '../types';
 import { SocialAccountsView } from './SocialAccountsView';
 import { MetaOnboarding } from './MetaOnboarding';
 import { ProviderOnboarding } from './ProviderOnboarding';
+import { MetricLabel } from './MetricTip';
 import { useWorkspaceLocale } from '../lib/WorkspaceLocale';
 
 interface AgencyHubProps {
@@ -151,7 +152,11 @@ export const AgencyHubView: React.FC<AgencyHubProps> = ({
                 <p><span className="text-slate-500">Connected channels:</span> {c.platforms.filter((p) => p.connected).length}</p>
               </div>
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-emerald-400 font-bold">{c.growthScore} Growth Score</span>
+                <span className="text-emerald-400 font-bold">
+                  <MetricLabel metric="growthScore">
+                    {c.growthScore} Growth Score
+                  </MetricLabel>
+                </span>
                 <button
                   onClick={() => setActiveTab('socials')}
                   className="text-cyan-400 hover:underline font-semibold text-[11px]"
