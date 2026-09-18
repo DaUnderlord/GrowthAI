@@ -597,15 +597,18 @@ function escapeHtml(value: string) {
 }
 
 function callbackPage(origin: string, payload: Record<string, unknown>) {
-  const message = payload.ok ? 'Account connected. You can close this window.' : String(payload.error || 'OAuth failed');
+  const message = payload.ok ? 'Account connected. Returning to GrowthOS…' : String(payload.error || 'OAuth failed');
+  const next = `${origin}/?view=agency&oauth=${payload.ok ? 'ok' : 'error'}&platform=${encodeURIComponent(String(payload.platform || ''))}`;
   return `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#070b12;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh">
   <p>${escapeHtml(message)}</p>
   <script>
+    var payload = Object.assign({ type: ${JSON.stringify(payload.ok ? 'OAUTH_AUTH_SUCCESS' : 'OAUTH_AUTH_ERROR')} }, ${JSON.stringify(payload)});
+    try { sessionStorage.setItem('gos_oauth', JSON.stringify(payload)); } catch (e) {}
     if (window.opener) {
-      window.opener.postMessage({ type: ${JSON.stringify(payload.ok ? 'OAUTH_AUTH_SUCCESS' : 'OAUTH_AUTH_ERROR')}, ...${JSON.stringify(payload)} }, ${JSON.stringify(origin)});
-      setTimeout(() => window.close(), 800);
+      window.opener.postMessage(payload, ${JSON.stringify(origin)});
+      setTimeout(function () { window.close(); }, 800);
     } else {
-      location.href = ${JSON.stringify(origin)} + '/?view=agency';
+      location.replace(${JSON.stringify(next)});
     }
   </script></body></html>`;
 }

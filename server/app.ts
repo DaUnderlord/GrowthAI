@@ -19,6 +19,7 @@ import {
 } from "./ai/gemini";
 import { getAppUrl } from "./appUrl";
 import { probeGoogleAuthEnabled } from "../shared/googleAuth";
+import { isProviderOAuthState } from "../shared/providerOAuth";
 import { authOf } from "./authMiddleware";
 import {
   constrainPrediction,
@@ -44,6 +45,20 @@ export function createApp(): Express {
     if (stripped && (original.startsWith('/auth/') || (original.startsWith('/api/') && original !== '/api'))) {
       console.info('[api] restored vercel path', { from: req.path, to: original, method: req.method });
       req.url = `${original}${qs}`;
+    }
+    const params = new URLSearchParams(qs.startsWith('?') ? qs.slice(1) : qs);
+    const state = String(params.get('state') || '');
+    if (
+      req.method === 'GET' &&
+      params.get('code') &&
+      isProviderOAuthState(state) &&
+      !String(req.url).includes('/auth/callback')
+    ) {
+      console.info('[api] routed provider oauth callback', {
+        from: req.path,
+        statePrefix: state.slice(0, 24),
+      });
+      req.url = `/auth/callback${qs}`;
     }
     next();
   });

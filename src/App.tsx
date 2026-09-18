@@ -134,7 +134,15 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     const clientId = params.get('client');
+    const oauth = params.get('oauth');
     if (view) setActiveView(view);
+    if (oauth === 'ok' || oauth === 'error') {
+      setActiveView('agency');
+      params.delete('oauth');
+      params.delete('platform');
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, '', next);
+    }
     if (clientId) {
       (window as any).__growthosShareClient = clientId;
     }

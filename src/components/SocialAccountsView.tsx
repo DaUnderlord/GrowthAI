@@ -107,60 +107,73 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({ client, 
           ? 'google'
           : 'meta';
 
-  // Listen for OAuth Success postMessage from Popup window
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) {
-        return;
-      }
+  const applyOauthPayload = async (data: any) => {
+    if (data?.type === 'OAUTH_AUTH_ERROR') {
+      setOauthError(data.error || 'OAuth failed');
+      setIsOauthLoggingIn(false);
+      setShowConnectModal(true);
+      return;
+    }
+    if (data?.type !== 'OAUTH_AUTH_SUCCESS') return;
 
-      if (event.data?.type === 'OAUTH_AUTH_ERROR') {
-        setOauthError(event.data.error || 'OAuth failed');
-        setIsOauthLoggingIn(false);
-        return;
-      }
-
-      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        const platformType = (event.data.platform || selectedChannel) as PlatformType;
-
-        setIsOauthLoggingIn(true);
-        try {
-          const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
-          const payload = await readJsonOrThrow<{ success?: boolean; error?: string; connections?: unknown[] }>(list);
-          if (payload.success) {
-            const live = connectionsToPlatforms(payload.connections || []);
-            setPlatforms(live);
-            onUpdatePlatforms(live);
-            if (event.data.needsSelection?.length) {
-              setPendingAssets(event.data.needsSelection);
-              setShowConnectModal(true);
-              setOauthError('This Meta login can access multiple brand accounts. Choose the one for this client.');
-            } else {
-              setShowConnectModal(false);
-              showToast(
-                event.data.warning
-                  ? `${event.data.accountName || platformType} signed in, but sync needs attention`
-                  : event.data.canPublish === false && (platformType === 'instagram' || platformType === 'facebook')
-                    ? `${event.data.accountName || platformType} connected for insights. Reconnect after adding publishing permissions on the Meta app.`
-                    : `${event.data.accountName || platformType} connected`
-              );
-              if (event.data.warning) setOauthError(event.data.warning);
-            }
-          } else {
-            setOauthError(payload.error || 'Connected, but could not refresh accounts.');
-          }
-        } catch (err: any) {
-          console.error("OAuth token exchange error:", err);
-          setOauthError("Failed to verify OAuth response from provider.");
-        } finally {
-          setIsOauthLoggingIn(false);
+    const platformType = (data.platform || selectedChannel) as PlatformType;
+    setIsOauthLoggingIn(true);
+    try {
+      const list = await authFetch(`/api/socials/connections?clientId=${encodeURIComponent(client.id)}`);
+      const payload = await readJsonOrThrow<{ success?: boolean; error?: string; connections?: unknown[] }>(list);
+      if (payload.success) {
+        const live = connectionsToPlatforms(payload.connections || []);
+        setPlatforms(live);
+        onUpdatePlatforms(live);
+        if (data.needsSelection?.length) {
+          setPendingAssets(data.needsSelection);
+          setShowConnectModal(true);
+          setOauthError('This Meta login can access multiple brand accounts. Choose the one for this client.');
+        } else {
+          setShowConnectModal(false);
+          showToast(
+            data.warning
+              ? `${data.accountName || platformType} signed in, but sync needs attention`
+              : data.canPublish === false && (platformType === 'instagram' || platformType === 'facebook')
+                ? `${data.accountName || platformType} connected for insights. Reconnect after adding publishing permissions on the Meta app.`
+                : `${data.accountName || platformType} connected`
+          );
+          if (data.warning) setOauthError(data.warning);
         }
+      } else {
+        setOauthError(payload.error || 'Connected, but could not refresh accounts.');
       }
-    };
+    } catch (err: any) {
+      console.error('OAuth token exchange error:', err);
+      setOauthError('Failed to verify OAuth response from provider.');
+    } finally {
+      setIsOauthLoggingIn(false);
+    }
+  };
 
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('gos_oauth');
+      if (!raw) return;
+      sessionStorage.removeItem('gos_oauth');
+      const data = JSON.parse(raw);
+      console.info('[oauth] restoring same-tab provider return', { type: data?.type, platform: data?.platform || null });
+      void applyOauthPayload(data);
+    } catch {
+      sessionStorage.removeItem('gos_oauth');
+    }
+    // Run once when this brand screen mounts after a same-tab Facebook return.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      void applyOauthPayload(event.data);
+    };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [platforms, selectedChannel, accountHandle]);
+  }, [client.id, selectedChannel, platforms]);
 
   // Handle Direct Instant OAuth Authorization
   const handleDirectOAuthConnect = async () => {

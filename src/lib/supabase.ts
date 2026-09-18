@@ -20,11 +20,15 @@ import { probeGoogleAuthEnabled } from '../../shared/googleAuth';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
+import { isProviderOAuthReturn } from './providerOAuthReturn';
+
 const AUTH_CLIENT_OPTIONS = {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    // Facebook returns ?code&state on /auth/callback. If that hits the SPA, exchanging it with
+    // Supabase Auth 400s and can wipe the workspace session.
+    detectSessionInUrl: typeof window === 'undefined' ? true : !isProviderOAuthReturn(),
   },
 };
 

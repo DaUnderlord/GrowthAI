@@ -233,11 +233,13 @@ export function buildAuthorizeUrl(
     }
     params.set('config_id', configId);
     params.set('override_default_response_type', 'true');
+    params.set('display', 'popup');
     console.info('[oauth] meta authorize using login-for-business', {
       platform,
       hasScope: false,
       hasConfigId: true,
       configIdLen: configId.length,
+      display: 'popup',
     });
   } else {
     params.set('scope', config.scopes);

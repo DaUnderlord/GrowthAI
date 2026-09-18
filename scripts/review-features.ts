@@ -260,6 +260,22 @@ async function main() {
     'Meta publishing login uses configuration ID instead of rerequest scope',
     publishAuthUrl.includes('config_id=987654321098765') && !publishAuthUrl.includes('auth_type=rerequest')
   );
+  assert('Meta authorize asks Facebook for a popup display', publishAuthUrl.includes('display=popup'));
+  assert(
+    'SPA does not feed Facebook OAuth codes into Supabase Auth',
+    read('src/lib/supabase.ts').includes('detectSessionInUrl') &&
+      read('src/lib/supabase.ts').includes('isProviderOAuthReturn')
+  );
+  assert(
+    'provider OAuth return is handed to Express',
+    read('src/main.tsx').includes('handoverProviderOAuthToApi') &&
+      read('server/app.ts').includes('routed provider oauth callback')
+  );
+  assert(
+    'same-tab OAuth callback survives without window.opener',
+    read('server/social/routes.ts').includes('gos_oauth') &&
+      read('src/components/SocialAccountsView.tsx').includes('gos_oauth')
+  );
   assert(
     'meta config id migration exists',
     fs.existsSync(path.join(process.cwd(), 'supabase/migrations/20260918120000_meta_config_id.sql'))
