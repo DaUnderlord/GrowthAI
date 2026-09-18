@@ -16,6 +16,7 @@ import {
   grantedScopesFromPermissions,
   hasMetaPublishScopes,
 } from '../../shared/calendarPublish';
+import { mapProviderPostType } from '../../shared/postFormat';
 
 export type ProviderOverrideMap = Partial<
   Record<ProviderFamily, { clientId: string; secret: string; extra?: Record<string, string> }>
@@ -622,7 +623,7 @@ async function fetchInstagramProfessional(igId: string, pageToken: string, pageN
     ).catch(() => ({ data: [] }));
   }
   const media = await jsonFetch(
-    `https://graph.facebook.com/v21.0/${igId}/media?fields=id,caption,timestamp,like_count,comments_count,insights.metric(impressions,reach,saved,shares)&limit=8&access_token=${encodeURIComponent(pageToken)}`
+    `https://graph.facebook.com/v21.0/${igId}/media?fields=id,caption,timestamp,like_count,comments_count,media_type,media_product_type,insights.metric(impressions,reach,saved,shares)&limit=8&access_token=${encodeURIComponent(pageToken)}`
   ).catch(() => ({ data: [] }));
   const metric = (name: string) =>
     Number(insights.data?.find((m: any) => m.name === name)?.values?.slice(-1)?.[0]?.value || 0);
@@ -631,6 +632,9 @@ async function fetchInstagramProfessional(igId: string, pageToken: string, pageN
     id: m.id,
     title: (m.caption || 'Instagram post').slice(0, 80),
     platform: 'instagram',
+    media_type: m.media_type,
+    media_product_type: m.media_product_type,
+    postType: mapProviderPostType(m),
     postDate: (m.timestamp || '').slice(0, 10),
     likes: m.like_count || 0,
     comments: m.comments_count || 0,
@@ -639,6 +643,13 @@ async function fetchInstagramProfessional(igId: string, pageToken: string, pageN
     saves: Number(m.insights?.data?.find((i: any) => i.name === 'saved')?.values?.[0]?.value || 0),
     shares: Number(m.insights?.data?.find((i: any) => i.name === 'shares')?.values?.[0]?.value || 0),
   }));
+  console.info('[meta] ig media formats', {
+    igId,
+    counts: posts.reduce((acc: Record<string, number>, post: { postType: string }) => {
+      acc[post.postType] = (acc[post.postType] || 0) + 1;
+      return acc;
+    }, {}),
+  });
   const engagement = posts.reduce((s: number, p: any) => s + p.likes + p.comments + p.saves, 0);
   const followers = Number(ig.followers_count || 0);
   return {

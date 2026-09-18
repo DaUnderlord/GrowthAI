@@ -47,7 +47,12 @@ export type MetricKey =
   | 'aiOptimize'
   | 'aiCompetitors'
   | 'aiReboost'
-  | 'aiCreative';
+  | 'aiCreative'
+  | 'aiRecap'
+  | 'aiPlaybook'
+  | 'aiActions'
+  | 'playbookN'
+  | 'playbookConfidence';
 
 export type MetricTipCopy = {
   title: string;
@@ -153,7 +158,7 @@ export const METRIC_TIPS: Record<MetricKey, MetricTipCopy> = {
   },
   postType: {
     title: 'Post type',
-    body: 'Currently defaulted to “Reel” for synced Instagram media. It is not read from Meta’s media product type.',
+    body: 'From Instagram media_type / media_product_type on the last Sync (Reel, carousel, story, feed). Unclassified until that snapshot includes those fields — Recap will not pretend every post is a Reel.',
   },
   reboostFlag: {
     title: 'Reboost recommended',
@@ -242,6 +247,26 @@ export const METRIC_TIPS: Record<MetricKey, MetricTipCopy> = {
   aiCreative: {
     title: 'Creative',
     body: 'Uploads an image to Gemini vision and compares it to last-sync posts when present. Predicted success is 0 without a live sync.',
+  },
+  aiRecap: {
+    title: 'Recap',
+    body: 'Charts from last-sync provider posts and calendar mix. No Gemini. Follower count is a point in time; 24h reach of 0 does not hide per-post reach. Best posting hour stays unknown.',
+  },
+  aiPlaybook: {
+    title: 'Playbook',
+    body: 'Ranks format × platform against the campaign goal using last-sync posts only. n < 3 is “too few to call.” This is not Meta’s ranking algorithm.',
+  },
+  aiActions: {
+    title: 'Actions',
+    body: 'Concrete calendar edits (format, hook, split topic, follow-up draft). Apply writes Content Calendar fields; status stays scheduled or draft. Growth AI never auto-posts to Instagram.',
+  },
+  playbookN: {
+    title: 'Sample size (n)',
+    body: 'How many last-sync posts sit in that format × platform bucket. Fewer than 3 is shown but not used as a rule.',
+  },
+  playbookConfidence: {
+    title: 'Confidence',
+    body: 'too few (n < 3), low (3–4), medium (5–7), useful (8+). Based only on how many posts were in the last sync, not on a model score.',
   },
 };
 

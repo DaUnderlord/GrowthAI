@@ -246,6 +246,56 @@ Optimize this content for the connected account — do not invent reach or follo
     }
   });
 
+  app.post("/api/growth/draft-calendar-copy", ...growthAi, async (req, res) => {
+    try {
+      const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
+      if (!actions.length) {
+        res.status(400).json({ success: false, error: 'actions is required', code: 'validation' });
+        return;
+      }
+      const live = await liveFor(req);
+      const goal = String(req.body?.goal || '');
+      const slim = actions.slice(0, 8).map((action: any) => ({
+        actionId: String(action.actionId || ''),
+        kind: String(action.kind || ''),
+        topic: String(action.topic || ''),
+        platform: String(action.platform || ''),
+        contentType: String(action.contentType || ''),
+        citePosts: (action.citePosts || []).slice(0, 2).map((post: any) => ({
+          title: String(post.title || ''),
+          hookText: String(post.hookText || ''),
+          reach: Number(post.reach || 0),
+          saves: Number(post.saves || 0),
+        })),
+      }));
+
+      const systemPrompt = withLiveAccountRules(`You are GrowthOS copywriter for calendar recommendations.
+Write ONLY hook and caption language. Do not invent reach, followers, posting hours, or ranking-algorithm claims.
+Each draft MUST cite a named last-sync post from citePosts (title quoted). If citePosts is empty, write process copy and say there is no last-sync post to copy.
+Return ONLY JSON: {"drafts":[{"actionId":"","hookText":"","captionText":""}]}`);
+
+      const prompt = withLiveAccountUser(
+        `Campaign goal: ${goal}
+Calendar actions to draft copy for: ${JSON.stringify(slim)}
+Keep hooks under 140 characters. Captions under 280 characters.`,
+        live
+      );
+
+      const resultText = await generateGrowthAI(prompt, systemPrompt, { temperature: 0.4 });
+      const parsed: any = parseJsonFromModel(resultText, { drafts: [] });
+      const drafts = (Array.isArray(parsed.drafts) ? parsed.drafts : [])
+        .map((draft: any) => ({
+          actionId: String(draft.actionId || ''),
+          hookText: String(draft.hookText || '').slice(0, 180),
+          captionText: String(draft.captionText || '').slice(0, 400),
+        }))
+        .filter((draft: { actionId: string }) => draft.actionId);
+      res.json({ success: true, drafts, liveContext: live.publicSummary });
+    } catch (err: any) {
+      sendAiError(res, err);
+    }
+  });
+
   app.post("/api/growth/competitor-scan", ...growthAi, async (req, res) => {
     try {
       const { competitorName, industry, channel, website } = req.body || {};

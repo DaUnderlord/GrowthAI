@@ -29,8 +29,8 @@ const STEPS = [
   },
   {
     icon: Target,
-    title: 'Growth AI Suite',
-    body: 'Growth AI reads last-sync posts, followers, and listed gaps. It will not invent reach or posting hours. Tap the ? next to a metric to see whether the number is from Meta, a workspace formula, or a Gemini guess. Paid reboost needs a selected ads account.',
+    title: 'Growth AI',
+    body: 'Recap charts last-sync posts and the calendar. Playbook ranks format vs the campaign goal with sample size. Actions apply one-click edits to scheduled/draft rows — Growth AI never auto-posts to Instagram, and it does not claim to know Meta’s ranking algorithm.',
   },
   {
     icon: Calendar,

@@ -8,6 +8,7 @@ import { ConnectAccountsPrompt } from './ConnectAccountsPrompt';
 import { DataLoader } from './DataLoader';
 import { MetricLabel } from './MetricTip';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { buildPlaybook, buildRecap, recapStripLine } from '../lib/growthStrategist';
 
 interface OverviewDashboardProps {
   client: ClientProfile;
@@ -56,6 +57,14 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
     postCount: livePosts.length,
     followers: Number(live?.demographics?.followers || 0),
   });
+  const recap = buildRecap({
+    posts: livePosts,
+    followers: Number(live?.demographics?.followers || 0),
+    reach24h: Number(live?.demographics?.reach || 0),
+    adsSpend: Number(live?.demographics?.spend || 0),
+    updatedAt: live?.updated_at,
+  });
+  const playbook = buildPlaybook({ recap, goalText: client.primaryGoal });
 
   if (typeof window !== 'undefined') {
     console.info('[overview] attention vs live', {
@@ -124,6 +133,21 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
       </section>
 
       {!hasLive && <ConnectAccountsPrompt client={client} needed={['meta']} />}
+
+      <button
+        type="button"
+        onClick={() => onNavigateTab('intelligence')}
+        className="surface-panel flex w-full items-start justify-between gap-4 p-5 text-left transition hover:bg-white/[0.02]"
+      >
+        <div>
+          <p className="eyebrow-label">Recap vs goal</p>
+          <p className="mt-2 text-sm leading-6 text-slate-300">{recapStripLine(recap, playbook)}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {client.primaryGoal || 'Followers / awareness'} · last-sync posts only, not Meta’s ranking algorithm.
+          </p>
+        </div>
+        <span className="shrink-0 text-sm text-[color:var(--accent)]">Open Recap</span>
+      </button>
 
       <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <section className="reveal-panel">

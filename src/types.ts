@@ -145,7 +145,7 @@ export interface PostPerformance {
   id: string;
   title: string;
   platform: PlatformType;
-  postType: 'Reel' | 'Carousel' | 'Story' | 'Article' | 'Ad Campaign';
+  postType: 'Reel' | 'Carousel' | 'Story' | 'Article' | 'Ad Campaign' | 'Feed' | 'Unknown';
   postDate: string;
   reach: number;
   impressions: number;
@@ -160,6 +160,8 @@ export interface PostPerformance {
   reboostRecommended: boolean;
   hookText: string;
   source?: string;
+  media_type?: string;
+  media_product_type?: string;
 }
 
 export interface AudiencePersona {

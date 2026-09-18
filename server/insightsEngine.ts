@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from './supabaseAdmin';
+import { mapProviderPostType } from '../shared/postFormat';
 
 function clamp(n: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(n)));
@@ -54,7 +55,9 @@ export async function rebuildClientInsights(clientId: string, orgId: string) {
       id: post.id,
       title: String(post.title || post.caption || 'Untitled').slice(0, 120),
       platform: post.platform,
-      postType: post.postType || 'Reel',
+      postType: mapProviderPostType(post),
+      media_type: post.media_type || post.mediaType || null,
+      media_product_type: post.media_product_type || post.mediaProductType || null,
       postDate: post.postDate || post.timestamp || null,
       reach: Number(post.reach || 0),
       impressions: Number(post.impressions || 0),
@@ -76,6 +79,14 @@ export async function rebuildClientInsights(clientId: string, orgId: string) {
     }));
 
   const postReach = snapshotPosts.reduce((sum, post) => sum + Number(post.reach || 0), 0);
+  console.info('[insights] post formats', {
+    clientId,
+    counts: snapshotPosts.reduce((acc: Record<string, number>, post: { postType?: string }) => {
+      const key = String(post.postType || 'Unknown');
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+  });
   const trendReach = reach || postReach;
   console.info('[insights] trend reach', {
     clientId,

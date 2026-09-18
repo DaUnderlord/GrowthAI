@@ -17,6 +17,16 @@ import {
 } from '../shared/calendarPublish';
 import { campaignMetricsFromInsights } from '../server/insightsEngine';
 import { PRODUCTION_APP_URL, getAppUrl } from '../server/appUrl';
+import { mapProviderPostType } from '../shared/postFormat';
+import {
+  buildActions,
+  buildPlaybook,
+  buildRecap,
+  classifyGoal,
+  confidenceFromN,
+  applyActionToItem,
+} from '../src/lib/growthStrategist';
+import type { ContentCalendarItem, PostPerformance } from '../src/types';
 
 type Check = { name: string; ok: boolean; detail?: string };
 
@@ -212,6 +222,205 @@ async function main() {
     read('src/components/DataLoader.tsx').includes("variant === 'overlay'") &&
       read('src/App.tsx').includes('Loading workspace data') &&
       read('src/components/OverviewDashboard.tsx').includes('Loading last-sync insights')
+  );
+
+  assert('n < 3 is too few to call', confidenceFromN(2) === 'too_few' && confidenceFromN(3) === 'low');
+  assert('followers/awareness is the default goal kind', classifyGoal('Scale Instagram followers') === 'followers');
+  assert('sales copy maps to conversions', classifyGoal('Drive bookings and sales') === 'conversions');
+  assert(
+    'Instagram VIDEO+REELS maps to Reel, IMAGE feed stays Feed',
+    mapProviderPostType({ media_product_type: 'REELS', media_type: 'VIDEO' }) === 'Reel' &&
+      mapProviderPostType({ media_type: 'IMAGE' }) === 'Feed' &&
+      mapProviderPostType({ media_type: 'CAROUSEL_ALBUM' }) === 'Carousel' &&
+      mapProviderPostType({}) === 'Unknown'
+  );
+
+  const twoReels: PostPerformance[] = [1, 2].map((i) => ({
+    id: `r${i}`,
+    title: `Reel ${i}`,
+    platform: 'instagram',
+    postType: 'Reel',
+    postDate: '2026-09-01',
+    reach: 1200,
+    impressions: 1200,
+    saves: 4,
+    shares: 1,
+    likes: 10,
+    comments: 2,
+    clicks: 0,
+    conversions: 0,
+    viralityScore: 10,
+    status: 'underperforming',
+    reboostRecommended: true,
+      hookText: 'Proof from the ward',
+    source: 'provider_media',
+    media_type: 'VIDEO',
+    media_product_type: 'REELS',
+  }));
+  const thinPlaybook = buildPlaybook({
+    recap: buildRecap({ posts: twoReels }),
+    goalText: 'Grow followers',
+  });
+  assert('Playbook does not crown a format with n < 3', thinPlaybook.winner === null);
+  assert(
+    'Playbook reports the sample instead of inventing a winner',
+    thinPlaybook.rows[0]?.n === 2 && thinPlaybook.rows[0]?.confidence === 'too_few'
+  );
+
+  const classified: PostPerformance[] = [
+    ...[1, 2, 3, 4, 5].map((i) => ({
+      id: `reel-${i}`,
+      title: `Ward Reel ${i}`,
+      platform: 'instagram' as const,
+      postType: 'Reel' as const,
+      postDate: '2026-09-0' + i,
+      reach: 1200 + i * 10,
+      impressions: 1500,
+      saves: 6,
+      shares: 2,
+      likes: 20,
+      comments: 4,
+      clicks: 0,
+      conversions: 0,
+      viralityScore: 20,
+      status: 'performing' as const,
+      reboostRecommended: false,
+      hookText: 'What we changed on the ward',
+      source: 'provider_media',
+      media_type: 'VIDEO',
+      media_product_type: 'REELS',
+    })),
+    ...[1, 2, 3].map((i) => ({
+      id: `car-${i}`,
+      title: `Carousel ${i}`,
+      platform: 'instagram' as const,
+      postType: 'Carousel' as const,
+      postDate: '2026-09-1' + i,
+      reach: 400,
+      impressions: 500,
+      saves: 1,
+      shares: 0,
+      likes: 8,
+      comments: 1,
+      clicks: 0,
+      conversions: 0,
+      viralityScore: 5,
+      status: 'underperforming' as const,
+      reboostRecommended: true,
+      hookText: 'Five slides',
+      source: 'provider_media',
+      media_type: 'CAROUSEL_ALBUM',
+    })),
+  ];
+  const recap = buildRecap({
+    posts: classified,
+    followers: 188,
+    platformPostCounts: [
+      { platform: 'instagram', postCount: 8 },
+      { platform: 'facebook', postCount: 0 },
+    ],
+  });
+  const playbook = buildPlaybook({ recap, goalText: 'Grow Instagram followers' });
+  assert('Recap sums last-sync post reach', recap.postReach === classified.reduce((s, p) => s + p.reach, 0));
+  const legacyRecap = buildRecap({
+    posts: classified.map((post) => ({ ...post, media_type: undefined, media_product_type: undefined })),
+  });
+  assert(
+    'legacy last-sync posts without media_type stay unclassified instead of fake Reels',
+    legacyRecap.formatsClassified === false && buildPlaybook({ recap: legacyRecap, goalText: 'Grow followers' }).winner === null
+  );
+  assert(
+    'Playbook crowns Reels on followers when n>=3 and reach is higher',
+    playbook.winner?.format === 'Reel' && playbook.winner.n === 5 && playbook.winner.ranked
+  );
+  assert(
+    'Facebook 0-post caveat is explicit',
+    playbook.caveats.some((c) => /facebook/i.test(c) && /0 posts/i.test(c))
+  );
+  const salesBook = buildPlaybook({ recap, goalText: 'Drive conversions and bookings', conversionsTotal: 0 });
+  assert('Sales goal with 0 conversions is not optimized', salesBook.canOptimize === false && salesBook.winner === null);
+
+  const calendarItem: ContentCalendarItem = {
+    id: 'cal-1',
+    clientId: 'client-1',
+    date: '2026-09-20',
+    dayOfWeek: 'Sunday',
+    time: '12:00',
+    platform: 'instagram',
+    contentType: 'Carousel',
+    topic: 'Ward tour',
+    hookText: 'Hi',
+    captionText: '',
+    cta: '',
+    status: 'scheduled',
+    aiScore: 40,
+  };
+  const actions = buildActions({
+    recap,
+    playbook,
+    calendar: [calendarItem],
+    todayIso: '2026-09-18',
+    clientId: 'client-1',
+    clientName: 'First Dominican',
+  });
+  const formatAction = actions.find((a) => a.kind === 'change_format');
+  assert('Actions recommend turning a carousel into a Reel when mix is off-goal', formatAction?.after.contentType === 'Reel');
+  const applied = formatAction
+    ? applyActionToItem(calendarItem, formatAction)
+    : calendarItem;
+  assert(
+    'Apply keeps scheduled status and writes hook + format',
+    Boolean(formatAction) &&
+      applied.status === 'scheduled' &&
+      applied.contentType === 'Reel' &&
+      Boolean(applied.hookText && applied.aiFeedback)
+  );
+  const fbItem = { ...calendarItem, id: 'cal-fb', platform: 'facebook' as const };
+  const fbActions = buildActions({
+    recap,
+    playbook,
+    calendar: [fbItem],
+    todayIso: '2026-09-18',
+    clientId: 'client-1',
+    clientName: 'First Dominican',
+  });
+  assert(
+    'Facebook calendar advice cites Instagram last-sync explicitly',
+    fbActions.some((a) => /Instagram last-sync/i.test(String(a.crossPlatformNote || '')))
+  );
+
+  const intelligence = read('src/components/GrowthIntelligenceView.tsx');
+  assert(
+    'Growth AI home is Recap / Playbook / Actions',
+    intelligence.includes("id: 'recap'") &&
+      intelligence.includes("id: 'playbook'") &&
+      intelligence.includes("id: 'actions'") &&
+      intelligence.includes("useState<SuiteTab>('recap')")
+  );
+  assert('seven labs are not the default path', !intelligence.includes("useState<SuiteTab>('signals')"));
+  assert(
+    'Recap does not call Gemini',
+    intelligence.includes('Loading last-sync posts and calendar mix') &&
+      intelligence.includes("tab !== 'actions'")
+  );
+  assert(
+    'Actions apply writes calendar items, not Instagram publish',
+    intelligence.includes('saveCalendarItem') && !intelligence.includes('/api/calendar/') && intelligence.includes("status: 'draft'")
+  );
+  assert(
+    'Gemini copy endpoint exists and asks for named posts',
+    read('server/app.ts').includes('/api/growth/draft-calendar-copy') &&
+      read('server/app.ts').includes('cite a named last-sync post')
+  );
+  assert(
+    'Instagram sync reads media product type',
+    read('server/social/providers.ts').includes('media_product_type') &&
+      read('server/insightsEngine.ts').includes('mapProviderPostType')
+  );
+  assert(
+    'Overview Recap strip deep-links to Growth AI',
+    read('src/components/OverviewDashboard.tsx').includes('recapStripLine') &&
+      read('src/components/OverviewDashboard.tsx').includes("onNavigateTab('intelligence')")
   );
 
   const liveApi = read('src/lib/liveApi.ts');
